@@ -8,6 +8,10 @@ import Loadable from "./components/Loadable";
 import MatxLayout from "./components/MatxLayout/MatxLayout";
 
 import materialRoutes from "./views/material-kit/MaterialRoutes";
+import CategoryManager from "app/pages/inventario/CategoryManager";
+import ProductManager from "app/pages/inventario/ProductManager";
+import TableManager from "./pages/ventas/TableManager";
+import UserManager from "./pages/administracion/UserManager";
 
 // SESSION PAGES
 const NotFound = Loadable(lazy(() => import("./views/sessions/NotFound")));
@@ -33,8 +37,14 @@ const routes = [
       // dashboard route
       { path: "/dashboard/default", element: <Analytics />, auth: authRoles.admin },
       // e-chart route
-      { path: "/charts/echarts", element: <AppEchart />, auth: authRoles.editor }
+      { path: "/charts/echarts", element: <AppEchart />, auth: authRoles.editor },
       // Rutas nuevas
+      { path: "/ventas/mesas", element: <TableManager />, auth: authRoles.admin },
+
+      { path: "/inventario/categorias", element: <CategoryManager />, auth: authRoles.admin },
+      { path: "/inventario/productos", element: <ProductManager />, auth: authRoles.admin },
+
+      { path: "/administracion/usuarios", element: <UserManager />, auth: authRoles.admin },
     ]
   },
 

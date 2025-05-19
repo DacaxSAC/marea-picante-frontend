@@ -17,8 +17,7 @@ import useAuth from "../../../hooks/useAuth";
 import useSettings from "../../../hooks/useSettings";
 
 import { Span } from "../../Typography";
-import ShoppingCart from "../../ShoppingCart";
-import { MatxMenu, MatxSearchBox } from "../../index";
+import { MatxMenu } from "../../index";
 import { NotificationBar } from "../../NotificationBar";
 import { themeShadows } from "../../MatxTheme/themeColors";
 
@@ -29,9 +28,6 @@ import {
   Menu,
   Person,
   Settings,
-  WebAsset,
-  MailOutline,
-  StarOutline,
   PowerSettingsNew
 } from "@mui/icons-material";
 
@@ -83,10 +79,10 @@ const StyledItem = styled(MenuItem)(({ theme }) => ({
   "& span": { marginRight: "10px", color: theme.palette.text.primary }
 }));
 
-const IconBox = styled("div")(({ theme }) => ({
-  display: "inherit",
-  [theme.breakpoints.down("md")]: { display: "none !important" }
-}));
+// const IconBox = styled("div")(({ theme }) => ({
+//   display: "inherit",
+//   [theme.breakpoints.down("md")]: { display: "none !important" }
+// }));
 
 const Layout1Topbar = () => {
   const theme = useTheme();
@@ -117,7 +113,7 @@ const Layout1Topbar = () => {
             <Menu />
           </StyledIconButton>
 
-          <IconBox>
+          {/* <IconBox>
             <StyledIconButton>
               <MailOutline />
             </StyledIconButton>
@@ -129,17 +125,17 @@ const Layout1Topbar = () => {
             <StyledIconButton>
               <StarOutline />
             </StyledIconButton>
-          </IconBox>
+          </IconBox> */}
         </Box>
 
         <Box display="flex" alignItems="center">
-          <MatxSearchBox />
+          {/* <MatxSearchBox /> */}
 
           <NotificationProvider>
             <NotificationBar />
           </NotificationProvider>
 
-          <ShoppingCart />
+          {/* <ShoppingCart /> */}
 
           <MatxMenu
             menuButton={
