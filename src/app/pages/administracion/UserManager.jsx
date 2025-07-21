@@ -34,8 +34,7 @@ const UserManager = () => {
     username: '',
     email: '',
     password: '',
-    role: 0,
-    state: 1
+    role: 0
   });
 
   useEffect(() => {
@@ -54,7 +53,6 @@ const UserManager = () => {
 
   const handleOpenDialog = (user = null) => {
     if (user) {
-      // No incluir la contraseña al editar
       setCurrentUser({
         ...user,
         password: ''
@@ -64,8 +62,7 @@ const UserManager = () => {
         username: '',
         email: '',
         password: '',
-        role: 0,
-        active: 1
+        role: 0
       });
     }
     setOpenDialog(true);
@@ -78,9 +75,7 @@ const UserManager = () => {
       username: '',
       email: '',
       password: '',
-      fullName: '',
-      role: 0,
-      state: 1
+      role: 0
     });
   };
 
@@ -161,10 +156,8 @@ const UserManager = () => {
             <TableHead>
               <TableRow>
                 <TableCell>Usuario</TableCell>
-                <TableCell>Nombre Completo</TableCell>
                 <TableCell>Email</TableCell>
                 <TableCell>Rol</TableCell>
-                <TableCell>Estado</TableCell>
                 <TableCell>Acciones</TableCell>
               </TableRow>
             </TableHead>
@@ -172,24 +165,8 @@ const UserManager = () => {
               {users.map((user) => (
                 <TableRow key={user.userId}>
                   <TableCell>{user.username}</TableCell>
-                  <TableCell>{user.fullName}</TableCell>
                   <TableCell>{user.email}</TableCell>
                   <TableCell>{getRoleText(user.role)}</TableCell>
-                  <TableCell>
-                    <Box 
-                      sx={{ 
-                        backgroundColor: user.active ? '#4CAF50' : '#F44336',
-                        color: 'white',
-                        p: 0.5,
-                        borderRadius: 1,
-                        display: 'inline-block',
-                        minWidth: 80,
-                        textAlign: 'center'
-                      }}
-                    >
-                      {user.active ? 'Activo' : 'Inactivo'}
-                    </Box>
-                  </TableCell>
                   <TableCell>
                     <IconButton onClick={() => handleOpenDialog(user)}>
                       <Edit />
@@ -218,16 +195,6 @@ const UserManager = () => {
               onChange={(e) => setCurrentUser({
                 ...currentUser,
                 username: e.target.value
-              })}
-              margin="normal"
-            />
-            <TextField
-              fullWidth
-              label="Nombre Completo"
-              value={currentUser.fullName}
-              onChange={(e) => setCurrentUser({
-                ...currentUser,
-                fullName: e.target.value
               })}
               margin="normal"
             />
@@ -275,23 +242,10 @@ const UserManager = () => {
                   role: e.target.value
                 })}
               >
-                <MenuItem value="admin">Administrador</MenuItem>
-                <MenuItem value="user">Usuario</MenuItem>
-                <MenuItem value="cashier">Cajero</MenuItem>
-                <MenuItem value="waiter">Mesero</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControl fullWidth margin="normal">
-              <InputLabel>Estado</InputLabel>
-              <Select
-                value={currentUser.active}
-                onChange={(e) => setCurrentUser({
-                  ...currentUser,
-                  active: e.target.value
-                })}
-              >
-                <MenuItem value={true}>Activo</MenuItem>
-                <MenuItem value={false}>Inactivo</MenuItem>
+                <MenuItem value={1}>Administrador</MenuItem>
+                <MenuItem value={2}>Usuario</MenuItem>
+                <MenuItem value={3}>Cajero</MenuItem>
+                <MenuItem value={4}>Mesero</MenuItem>
               </Select>
             </FormControl>
           </Box>
