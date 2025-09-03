@@ -5,7 +5,7 @@ export const navigations = [
     name: "Ventas",
     icon: "security",
     children: [
-      { name: "Órdenes", iconText: "SI", path: "/session/signin" },
+      { name: "Órdenes", iconText: "SI", path: "/ventas/ordenes" },
       { name: "Mesas", iconText: "SU", path: "/ventas/mesas" },
       { name: "Clientes", iconText: "FP", path: "/session/forgot-password" },
     ]

@@ -11,6 +11,7 @@ import materialRoutes from "./views/material-kit/MaterialRoutes";
 import CategoryManager from "app/pages/inventario/CategoryManager";
 import ProductManager from "app/pages/inventario/ProductManager";
 import TableManager from "./pages/ventas/TableManager";
+import OrderManager from "./pages/ventas/OrderManager";
 import UserManager from "./pages/administracion/UserManager";
 
 // SESSION PAGES
@@ -40,6 +41,7 @@ const routes = [
       { path: "/charts/echarts", element: <AppEchart />, auth: authRoles.editor },
       // Rutas nuevas
       { path: "/ventas/mesas", element: <TableManager />, auth: authRoles.admin },
+      { path: "/ventas/ordenes", element: <OrderManager />, auth: authRoles.admin },
 
       { path: "/inventario/categorias", element: <CategoryManager />, auth: authRoles.admin },
       { path: "/inventario/productos", element: <ProductManager />, auth: authRoles.admin },
