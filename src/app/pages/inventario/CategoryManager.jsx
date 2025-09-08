@@ -88,7 +88,6 @@ const CategoryManager = () => {
       const response = await fetch(`${API_URL}/${categoryId}`, {
         method: 'DELETE',
       });
-      debugger
       if (!response.ok) {
         throw new Error('Error al eliminar la categoría');
       }
