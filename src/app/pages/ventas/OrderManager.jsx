@@ -295,19 +295,15 @@ const OrderManager = () => {
     const getStatusColor = (status) => {
         switch (status?.toUpperCase()) {
             case 'PENDING':
-                return 'warning';
-            case 'PREPARING':
-                return 'info';
-            case 'READY':
-                return 'success';
-            case 'DELIVERED':
-                return 'default';
-            case 'CANCELLED':
-                return 'error';
+                return '#FFA726'; // Naranja más patito
+            case 'IN_PROGRESS':
+                return '#42A5F5'; // Azul
             case 'PAID':
-                return 'primary';
+                return '#66BB6A'; // Verde
+            case 'CANCELLED':
+                return '#EF5350'; // Rojo
             default:
-                return 'default';
+                return '#9E9E9E'; // Gris
         }
     };
 
@@ -315,16 +311,12 @@ const OrderManager = () => {
         switch (status?.toUpperCase()) {
             case 'PENDING':
                 return 'Pendiente';
-            case 'PREPARING':
-                return 'Preparando';
-            case 'READY':
-                return 'Listo';
-            case 'DELIVERED':
-                return 'Entregado';
-            case 'CANCELLED':
-                return 'Cancelado';
+            case 'IN_PROGRESS':
+                return 'En Progreso';
             case 'PAID':
                 return 'Pagado';
+            case 'CANCELLED':
+                return 'Cancelado';
             default:
                 return 'Desconocido';
         }
@@ -378,7 +370,7 @@ const OrderManager = () => {
                                     <TableCell>
                                         <Box display="flex" alignItems="center">
                                             <TableRestaurant sx={{ mr: 1 }} />
-                                            {order.tables.map(t => t.number).join(', ')}
+                                            {order.tables.map(t => t.number).sort((a, b) => a - b).join(', ')}
                                         </Box>
                                     </TableCell>
                                     <TableCell>
@@ -388,23 +380,41 @@ const OrderManager = () => {
                                         </Box>
                                     </TableCell>
                                     <TableCell>
-                                        <Select
-                                            value={order.status}
-                                            onChange={(e) => updateOrderStatus(order.id, e.target.value)}
-                                            size="small"
+                                        <Box 
+                                            display="flex" 
+                                            alignItems="center"
+                                            sx={{
+                                                backgroundColor: `${getStatusColor(order.status)}20`,
+                                                borderRadius: 1,
+                                                px: 1.5,
+                                                py: 0.5,
+                                                width: 'fit-content'
+                                            }}
                                         >
-                                            <MenuItem value="PENDING">Pendiente</MenuItem>
-                                            <MenuItem value="PREPARING">Preparando</MenuItem>
-                                            <MenuItem value="READY">Listo</MenuItem>
-                                            <MenuItem value="DELIVERED">Entregado</MenuItem>
-                                            <MenuItem value="PAID">Pagado</MenuItem>
-                                            <MenuItem value="CANCELLED">Cancelado</MenuItem>
-                                        </Select>
+                                            <Box
+                                                sx={{
+                                                    width: 8,
+                                                    height: 8,
+                                                    borderRadius: '50%',
+                                                    backgroundColor: getStatusColor(order.status),
+                                                    mr: 1
+                                                }}
+                                            />
+                                            <Typography 
+                                                variant="body2" 
+                                                sx={{ 
+                                                    color: getStatusColor(order.status),
+                                                    fontWeight: 500
+                                                }}
+                                            >
+                                                {getStatusText(order.status)}
+                                            </Typography>
+                                        </Box>
                                     </TableCell>
                                     <TableCell>
                                         <Box display="flex" alignItems="center">
                                             <AttachMoney sx={{ mr: 1 }} />
-                                            S/ {Number(order.total).toFixed(2)}
+                                            S/ {order.detalles.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0).toFixed(2)}
                                         </Box>
                                     </TableCell>
                                     <TableCell>
@@ -420,76 +430,258 @@ const OrderManager = () => {
             </Card>
 
             {/* Dialog para ver detalles de orden */}
-            <Dialog open={openDetailDialog} onClose={handleCloseDetailDialog} maxWidth="sm" fullWidth>
-                <DialogTitle>
+            <Dialog 
+                open={openDetailDialog} 
+                onClose={handleCloseDetailDialog} 
+                maxWidth="md" 
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        borderRadius: '16px',
+                        boxShadow: '0 20px 40px rgba(0,0,0,0.15)',
+                        overflow: 'hidden'
+                    }
+                }}
+            >
+                <DialogTitle
+                    sx={{
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        color: 'white',
+                        py: 3,
+                        position: 'relative'
+                    }}
+                >
                     <Box display="flex" justifyContent="space-between" alignItems="center">
-                        Detalles de Orden #{selectedOrder?.orderId}
-                        <IconButton onClick={handleCloseDetailDialog} size="small">
+                        <Box>
+                            <Typography variant="h5" sx={{ fontWeight: 600, mb: 0.5 }}>
+                                Orden #{selectedOrder?.orderId}
+                            </Typography>
+                            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                                Detalles completos de la orden
+                            </Typography>
+                        </Box>
+                        <IconButton 
+                            onClick={handleCloseDetailDialog} 
+                            size="small"
+                            sx={{
+                                color: 'white',
+                                backgroundColor: 'rgba(255,255,255,0.1)',
+                                '&:hover': {
+                                    backgroundColor: 'rgba(255,255,255,0.2)'
+                                }
+                            }}
+                        >
                             <Close />
                         </IconButton>
                     </Box>
                 </DialogTitle>
-                <DialogContent>
+                <DialogContent sx={{ p: 0 }}>
                     {selectedOrder && (
-                        <Box p={2}>
-                            <Typography variant="body1" gutterBottom>
-                                <strong>Mesas:</strong> {selectedOrder.tables.map(t => t.number).join(', ')}
-                            </Typography>
-                            <Typography variant="body1" gutterBottom>
-                                <strong>Fecha:</strong> {formatDateTime(selectedOrder.timestamp)}
-                            </Typography>
-                            <Typography variant="body1" gutterBottom>
-                                <strong>Estado:</strong>
-                                <Chip
-                                    label={getStatusText(selectedOrder.status)}
-                                    color={getStatusColor(selectedOrder.status)}
-                                    sx={{ ml: 1 }}
-                                />
-                            </Typography>
+                        <Box p={3}>
+                            {/* Información básica */}
+                            <Grid container spacing={3} sx={{ mb: 3 }}>
+                                <Grid item xs={12} md={4}>
+                                    <Paper 
+                                        elevation={0} 
+                                        sx={{ 
+                                            p: 2, 
+                                            backgroundColor: '#f8f9fa',
+                                            borderRadius: '12px',
+                                            border: '1px solid #e9ecef'
+                                        }}
+                                    >
+                                        <Box display="flex" alignItems="center" mb={1}>
+                                            <TableRestaurant sx={{ mr: 1, color: '#6c757d' }} />
+                                            <Typography variant="subtitle2" color="text.secondary">
+                                                Mesas
+                                            </Typography>
+                                        </Box>
+                                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                            {selectedOrder.tables.map(t => t.number).sort((a, b) => a - b).join(', ')}
+                                        </Typography>
+                                    </Paper>
+                                </Grid>
+                                <Grid item xs={12} md={4}>
+                                    <Paper 
+                                        elevation={0} 
+                                        sx={{ 
+                                            p: 2, 
+                                            backgroundColor: '#f8f9fa',
+                                            borderRadius: '12px',
+                                            border: '1px solid #e9ecef'
+                                        }}
+                                    >
+                                        <Box display="flex" alignItems="center" mb={1}>
+                                            <AccessTime sx={{ mr: 1, color: '#6c757d' }} />
+                                            <Typography variant="subtitle2" color="text.secondary">
+                                                Fecha y Hora
+                                            </Typography>
+                                        </Box>
+                                        <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                                            {formatDateTime(selectedOrder.timestamp)}
+                                        </Typography>
+                                    </Paper>
+                                </Grid>
+                                <Grid item xs={12} md={4}>
+                                    <Paper 
+                                        elevation={0} 
+                                        sx={{ 
+                                            p: 2, 
+                                            backgroundColor: '#f8f9fa',
+                                            borderRadius: '12px',
+                                            border: '1px solid #e9ecef'
+                                        }}
+                                    >
+                                        <Typography variant="subtitle2" color="text.secondary" mb={1}>
+                                            Estado
+                                        </Typography>
+                                        <Box
+                                            sx={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                backgroundColor: `${getStatusColor(selectedOrder.status)}20`,
+                                                color: getStatusColor(selectedOrder.status),
+                                                borderRadius: '12px',
+                                                padding: '6px 14px',
+                                                fontSize: '0.875rem',
+                                                fontWeight: 600,
+                                                border: `2px solid ${getStatusColor(selectedOrder.status)}40`
+                                            }}
+                                        >
+                                            {getStatusText(selectedOrder.status)}
+                                        </Box>
+                                    </Paper>
+                                </Grid>
+                            </Grid>
 
-                            <Divider sx={{ my: 2 }} />
+                            {/* Lista de productos */}
+                            <Paper 
+                                elevation={0} 
+                                sx={{ 
+                                    borderRadius: '12px',
+                                    border: '1px solid #e9ecef',
+                                    overflow: 'hidden'
+                                }}
+                            >
+                                <Box 
+                                    sx={{ 
+                                        p: 2, 
+                                        backgroundColor: '#f8f9fa',
+                                        borderBottom: '1px solid #e9ecef'
+                                    }}
+                                >
+                                    <Typography variant="h6" sx={{ fontWeight: 600, color: '#495057' }}>
+                                        Productos Ordenados
+                                    </Typography>
+                                </Box>
+                                <List sx={{ p: 0 }}>
+                                    {selectedOrder.detalles.map((item, index) => (
+                                        <ListItem 
+                                            key={item.orderDetailId}
+                                            sx={{
+                                                borderBottom: index < selectedOrder.detalles.length - 1 ? '1px solid #f1f3f4' : 'none',
+                                                py: 2
+                                            }}
+                                        >
+                                            <ListItemText
+                                                primary={
+                                                    <Typography variant="body1" sx={{ fontWeight: 500, mb: 0.5 }}>
+                                                        {item.producto.name}
+                                                    </Typography>
+                                                }
+                                                secondary={
+                                                    <Box display="flex" justifyContent="space-between" alignItems="center">
+                                                        <Typography variant="body2" color="text.secondary">
+                                                            {item.quantity} x S/ {Number(item.unitPrice).toFixed(2)}
+                                                        </Typography>
+                                                        <Typography variant="body1" sx={{ fontWeight: 600, color: '#28a745' }}>
+                                                            S/ {Number(item.subtotal).toFixed(2)}
+                                                        </Typography>
+                                                    </Box>
+                                                }
+                                            />
+                                        </ListItem>
+                                    ))}
+                                </List>
+                            </Paper>
 
-                            <Typography variant="h6" gutterBottom>
-                                Productos:
-                            </Typography>
-                            <List>
-                                {selectedOrder.detalles.map((item) => (
-                                    <ListItem key={item.id}>
-                                        <ListItemText
-                                            primary={item.name}
-                                            secondary={`${item.quantity} x S/ ${Number(item.price).toFixed(2)} = S/ ${Number(item.subtotal).toFixed(2)}`}
-                                        />
-                                    </ListItem>
-                                ))}
-                            </List>
-
-                            <Box mt={2} p={2} bgcolor="primary.light" color="primary.contrastText" borderRadius={1}>
-                                <Typography variant="h6">
-                                    Total: S/ {Number(selectedOrder.total).toFixed(2)}
+                            {/* Total */}
+                            <Paper 
+                                elevation={0}
+                                sx={{ 
+                                    mt: 3, 
+                                    p: 3, 
+                                    background: 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
+                                    color: 'white',
+                                    borderRadius: '12px',
+                                    textAlign: 'center'
+                                }}
+                            >
+                                <Typography variant="subtitle1" sx={{ opacity: 0.9, mb: 1 }}>
+                                    Total de la Orden
                                 </Typography>
-                            </Box>
+                                <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                                    S/ {selectedOrder.detalles.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0).toFixed(2)}
+                                </Typography>
+                            </Paper>
                         </Box>
                     )}
 
 
-                    <DialogActions sx={{ pr: 2, gap: 2 }}>
+                    <DialogActions 
+                        sx={{ 
+                            p: 3, 
+                            backgroundColor: '#f8f9fa',
+                            borderTop: '1px solid #e9ecef',
+                            gap: 2,
+                            justifyContent: 'center'
+                        }}
+                    >
                         <Button
                             onClick={handleCancelOrder}
-                            color="error"
                             variant="contained"
                             disabled={selectedOrder?.status === 'CANCELLED' || selectedOrder?.status === 'PAID'}
-                            sx={{ minWidth: 120 }}
+                            startIcon={<Close />}
+                            sx={{ 
+                                minWidth: 140,
+                                py: 1.5,
+                                borderRadius: '10px',
+                                background: 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)',
+                                boxShadow: '0 4px 12px rgba(220, 53, 69, 0.3)',
+                                '&:hover': {
+                                    background: 'linear-gradient(135deg, #c82333 0%, #bd2130 100%)',
+                                    boxShadow: '0 6px 16px rgba(220, 53, 69, 0.4)'
+                                },
+                                '&:disabled': {
+                                    background: '#6c757d',
+                                    boxShadow: 'none'
+                                }
+                            }}
                         >
-                            Cancelar
+                            Cancelar Orden
                         </Button>
                         <Button
                             onClick={handlePayOrder}
-                            color="success"
                             variant="contained"
                             disabled={selectedOrder?.status === 'CANCELLED' || selectedOrder?.status === 'PAID'}
-                            sx={{ minWidth: 120 }}
+                            startIcon={<AttachMoney />}
+                            sx={{ 
+                                minWidth: 140,
+                                py: 1.5,
+                                borderRadius: '10px',
+                                background: 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
+                                boxShadow: '0 4px 12px rgba(40, 167, 69, 0.3)',
+                                '&:hover': {
+                                    background: 'linear-gradient(135deg, #218838 0%, #1e7e34 100%)',
+                                    boxShadow: '0 6px 16px rgba(40, 167, 69, 0.4)'
+                                },
+                                '&:disabled': {
+                                    background: '#6c757d',
+                                    boxShadow: 'none'
+                                }
+                            }}
                         >
-                            Pagar
+                            Marcar como Pagado
                         </Button>
                     </DialogActions>
                 </DialogContent>
