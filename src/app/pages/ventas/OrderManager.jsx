@@ -14,6 +14,8 @@ import {
     DialogTitle,
     DialogContent,
     DialogActions,
+    Grid,
+    Paper,
     Typography,
     List,
     ListItem,
@@ -22,9 +24,6 @@ import {
     Snackbar,
 } from '@mui/material';
 import {
-    Edit,
-    Delete,
-    Add,
     Visibility,
     Receipt,
     TableRestaurant,
@@ -267,7 +266,7 @@ const OrderManager = () => {
 
     const handleCancelOrder = async () => {
         try {
-            await updateOrderStatus(selectedOrder.id, 'CANCELLED');
+            await updateOrderStatus(selectedOrder.orderId, 'CANCELLED');
             handleCloseDetailDialog();
         } catch (error) {
             // Error ya manejado en updateOrderStatus
@@ -276,7 +275,7 @@ const OrderManager = () => {
 
     const handlePayOrder = async () => {
         try {
-            await updateOrderStatus(selectedOrder.id, 'PAID');
+            await updateOrderStatus(selectedOrder.orderId, 'PAID');
             handleCloseDetailDialog();
         } catch (error) {
             // Error ya manejado en updateOrderStatus
@@ -351,7 +350,7 @@ const OrderManager = () => {
                         </TableHead>
                         <TableBody>
                             {orders.map((order) => (
-                                <TableRow key={order.id}>
+                                <TableRow key={order.orderId}>
                                     <TableCell>
                                         <Box display="flex" alignItems="center">
                                             <Receipt sx={{ mr: 1 }} />
