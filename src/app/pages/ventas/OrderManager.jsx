@@ -27,6 +27,9 @@ import {
     RadioGroup,
     FormControlLabel,
     Radio,
+    TextField,
+    Switch,
+    Chip,
 } from '@mui/material';
 import {
     Visibility,
@@ -38,6 +41,8 @@ import {
     Print,
     Payment,
     CreditCard,
+    Add,
+    Delete,
 } from '@mui/icons-material';
 
 const API_URL = 'http://localhost:4000/api/orders';
@@ -50,6 +55,10 @@ const OrderManager = () => {
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
     const [paymentMethod, setPaymentMethod] = useState('efectivo');
+    const [payments, setPayments] = useState([]);
+    const [showMultiplePayments, setShowMultiplePayments] = useState(false);
+    const [currentPaymentAmount, setCurrentPaymentAmount] = useState('');
+    const [remainingAmount, setRemainingAmount] = useState(0);
 
     const fetchOrders = useCallback(async () => {
         try {
@@ -127,18 +136,51 @@ const OrderManager = () => {
 
     const handlePayOrder = async () => {
         try {
-            await updateOrderStatus(selectedOrder.orderId, 'PAID');
+            let paymentsToProcess;
+            
+            if (showMultiplePayments && payments.length > 0) {
+                // Para pagos múltiples, aplicar el cargo del 5% solo a los pagos POS
+                paymentsToProcess = payments.map(payment => ({
+                    ...payment,
+                    amount: payment.paymentMethod === 'pos' 
+                        ? Math.ceil(payment.amount * 1.05 * 10) / 10 
+                        : payment.amount
+                }));
+            } else {
+                const subtotal = selectedOrder.detalles.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
+                const total = calculateTotalWithPOS(subtotal, paymentMethod);
+                paymentsToProcess = [{
+                    paymentMethod: paymentMethod,
+                    amount: total
+                }];
+            }
+            
+            // Procesar pagos múltiples
+            const response = await fetch(`${API_URL}/${selectedOrder.orderId}/payments`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ payments: paymentsToProcess })
+            });
+            
+            if (!response.ok) {
+                throw new Error('Error al procesar pagos');
+            }
             
             // Generar ticket automáticamente al marcar como pagado
             const orderWithPayment = {
                 ...selectedOrder,
-                paymentMethod: paymentMethod
+                paymentMethod: showMultiplePayments ? 'MULTIPLE' : paymentMethod,
+                payments: paymentsToProcess
             };
             await handleGenerateTicket(orderWithPayment);
             
+            showSnackbar('Orden pagada exitosamente', 'success');
+            fetchOrders();
             handleCloseDetailDialog();
         } catch (error) {
-            // Error ya manejado en updateOrderStatus
+            showSnackbar('Error al procesar el pago: ' + error.message, 'error');
         }
     };
 
@@ -357,8 +399,16 @@ const OrderManager = () => {
         // Método de pago
         ticket += commands.FEED_LINE;
         ticket += commands.BOLD_ON;
-        ticket += `METODO DE PAGO: ${getPaymentMethodText(order.paymentMethod).toUpperCase()}\n`;
-        ticket += commands.BOLD_OFF;
+        if (order.payments && order.payments.length > 1) {
+            ticket += 'METODOS DE PAGO:\n';
+            ticket += commands.BOLD_OFF;
+            order.payments.forEach(payment => {
+                ticket += `${getPaymentMethodText(payment.paymentMethod)}: S/.${payment.amount.toFixed(2)}\n`;
+            });
+        } else {
+            ticket += `METODO DE PAGO: ${getPaymentMethodText(order.paymentMethod).toUpperCase()}\n`;
+            ticket += commands.BOLD_OFF;
+        }
         
         // Pie de página
         ticket += commands.FEED_LINE;
@@ -383,8 +433,61 @@ const OrderManager = () => {
                 return 'Yape';
             case 'pos':
                 return 'POS';
+            case 'MULTIPLE':
+                return 'Múltiples métodos';
             default:
                 return 'Efectivo';
+        }
+    };
+
+    const addPayment = () => {
+        if (!currentPaymentAmount || parseFloat(currentPaymentAmount) <= 0) {
+            showSnackbar('Ingrese un monto válido', 'error');
+            return;
+        }
+        
+        const amount = parseFloat(currentPaymentAmount);
+        if (amount > remainingAmount) {
+            showSnackbar('El monto excede el restante', 'error');
+            return;
+        }
+        
+        const newPayment = {
+            paymentMethod: paymentMethod,
+            amount: amount
+        };
+        
+        const updatedPayments = [...payments, newPayment];
+        setPayments(updatedPayments);
+        setCurrentPaymentAmount('');
+        
+        const totalPaid = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
+        setRemainingAmount(getRemainingAmount() - amount);
+    };
+
+    const removePayment = (index) => {
+        const removedPayment = payments[index];
+        const updatedPayments = payments.filter((_, i) => i !== index);
+        setPayments(updatedPayments);
+        setRemainingAmount(remainingAmount + removedPayment.amount);
+    };
+
+    const getRemainingAmount = () => {
+        if (!selectedOrder) return 0;
+        const subtotal = selectedOrder.detalles.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
+        const total = calculateTotalWithPOS(subtotal, 'efectivo'); // Usar efectivo como base
+        const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+        return total - totalPaid;
+    };
+
+    const toggleMultiplePayments = () => {
+        setShowMultiplePayments(!showMultiplePayments);
+        setPayments([]);
+        setCurrentPaymentAmount('');
+        if (!showMultiplePayments && selectedOrder) {
+            const subtotal = selectedOrder.detalles.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
+            const total = calculateTotalWithPOS(subtotal, 'efectivo');
+            setRemainingAmount(total);
         }
     };
 
@@ -491,8 +594,17 @@ const OrderManager = () => {
                                     </TableCell>
                                     <TableCell>
                                         <Box display="flex" alignItems="center">
-                                            <TableRestaurant sx={{ mr: 1 }} />
-                                            {order.tables.map(t => t.number).sort((a, b) => a - b).join(', ')}
+                                            {order.isDelivery ? (
+                                                <>
+                                                    <span style={{ marginRight: 8 }}>🥡</span>
+                                                    Para Llevar
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <TableRestaurant sx={{ mr: 1 }} />
+                                                    {order.tables.map(t => t.number).sort((a, b) => a - b).join(', ')}
+                                                </>
+                                            )}
                                         </Box>
                                     </TableCell>
                                     <TableCell>
@@ -613,13 +725,20 @@ const OrderManager = () => {
                                         }}
                                     >
                                         <Box display="flex" alignItems="center" mb={1}>
-                                            <TableRestaurant sx={{ mr: 1, color: '#6c757d' }} />
+                                            {selectedOrder.isDelivery ? (
+                                                <span style={{ marginRight: 8, fontSize: '1.2em' }}>🥡</span>
+                                            ) : (
+                                                <TableRestaurant sx={{ mr: 1, color: '#6c757d' }} />
+                                            )}
                                             <Typography variant="subtitle2" color="text.secondary">
-                                                Mesas
+                                                {selectedOrder.isDelivery ? 'Orden' : 'Mesas'}
                                             </Typography>
                                         </Box>
                                         <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                            {selectedOrder.tables.map(t => t.number).sort((a, b) => a - b).join(', ')}
+                                            {selectedOrder.isDelivery ? 
+                                                'Para Llevar' : 
+                                                selectedOrder.tables.map(t => t.number).sort((a, b) => a - b).join(', ')
+                                            }
                                         </Typography>
                                     </Paper>
                                 </Grid>
@@ -640,7 +759,7 @@ const OrderManager = () => {
                                             </Typography>
                                         </Box>
                                         <Typography variant="body1" sx={{ fontWeight: 500 }}>
-                                            {formatDateTime(selectedOrder.timestamp)}
+                                            {formatDateTime(selectedOrder.createdAt)}
                                         </Typography>
                                     </Paper>
                                 </Grid>
@@ -755,7 +874,7 @@ const OrderManager = () => {
                                 )}
                             </Paper>
 
-                            {/* Sección de Métodos de Pago y Generar Ticket */}
+                            {/* Sección de Métodos de Pago y Ticket */}
                             <Paper 
                                 elevation={0}
                                 sx={{ 
@@ -765,81 +884,165 @@ const OrderManager = () => {
                                     border: '1px solid #e9ecef'
                                 }}
                             >
-                                <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#495057' }}>
-                                    Métodos de Pago y Ticket
-                                </Typography>
+                                <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                                    <Typography variant="h6" sx={{ fontWeight: 600, color: '#495057' }}>
+                                        Métodos de Pago y Ticket
+                                    </Typography>
+                                    <Box display="flex" alignItems="center">
+                                        <Typography variant="body2" sx={{ mr: 1 }}>Pagos múltiples</Typography>
+                                        <Switch
+                                            checked={showMultiplePayments}
+                                            onChange={toggleMultiplePayments}
+                                            color="primary"
+                                        />
+                                    </Box>
+                                </Box>
                                 
-                                <Grid container spacing={3}>
-                                    <Grid item xs={12} md={6}>
-                                        <FormControl component="fieldset">
-                                            <FormLabel component="legend" sx={{ fontWeight: 600, color: '#495057', mb: 1 }}>
-                                                Seleccionar Método de Pago
-                                            </FormLabel>
-                                            <RadioGroup
-                                                value={paymentMethod}
-                                                onChange={(e) => setPaymentMethod(e.target.value)}
-                                                sx={{ mt: 1 }}
-                                            >
-                                                <FormControlLabel 
-                                                    value="efectivo" 
-                                                    control={<Radio />} 
-                                                    label={
-                                                        <Box display="flex" alignItems="center">
-                                                            <AttachMoney sx={{ mr: 1, color: '#28a745' }} />
-                                                            Efectivo
-                                                        </Box>
-                                                    }
-                                                />
-                                                <FormControlLabel 
-                                                    value="yape" 
-                                                    control={<Radio />} 
-                                                    label={
-                                                        <Box display="flex" alignItems="center">
-                                                            <Payment sx={{ mr: 1, color: '#6f42c1' }} />
-                                                            Yape
-                                                        </Box>
-                                                    }
-                                                />
-                                                <FormControlLabel 
-                                                    value="pos" 
-                                                    control={<Radio />} 
-                                                    label={
-                                                        <Box display="flex" alignItems="center">
-                                                            <CreditCard sx={{ mr: 1, color: '#007bff' }} />
-                                                            POS
-                                                        </Box>
-                                                    }
-                                                />
-                                            </RadioGroup>
-                                        </FormControl>
+                                {!showMultiplePayments ? (
+                                    <Grid container spacing={3}>
+                                        <Grid item xs={12} md={6}>
+                                            <FormControl component="fieldset">
+                                                <FormLabel component="legend" sx={{ fontWeight: 600, color: '#495057', mb: 1 }}>
+                                                    Seleccionar Método de Pago
+                                                </FormLabel>
+                                                <RadioGroup
+                                                    value={paymentMethod}
+                                                    onChange={(e) => setPaymentMethod(e.target.value)}
+                                                    sx={{ mt: 1 }}
+                                                >
+                                                    <FormControlLabel 
+                                                        value="efectivo" 
+                                                        control={<Radio />} 
+                                                        label={
+                                                            <Box display="flex" alignItems="center">
+                                                                <AttachMoney sx={{ mr: 1, color: '#28a745' }} />
+                                                                Efectivo
+                                                            </Box>
+                                                        }
+                                                    />
+                                                    <FormControlLabel 
+                                                        value="yape" 
+                                                        control={<Radio />} 
+                                                        label={
+                                                            <Box display="flex" alignItems="center">
+                                                                <Payment sx={{ mr: 1, color: '#6f42c1' }} />
+                                                                Yape
+                                                            </Box>
+                                                        }
+                                                    />
+                                                    <FormControlLabel 
+                                                        value="pos" 
+                                                        control={<Radio />} 
+                                                        label={
+                                                            <Box display="flex" alignItems="center">
+                                                                <CreditCard sx={{ mr: 1, color: '#007bff' }} />
+                                                                POS
+                                                            </Box>
+                                                        }
+                                                    />
+                                                </RadioGroup>
+                                            </FormControl>
+                                        </Grid>
+                                        
+                                        <Grid item xs={12} md={6}>
+                                            <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" height="100%">
+                                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2, textAlign: 'center' }}>
+                                                    Generar ticket de la orden con el método de pago seleccionado
+                                                </Typography>
+                                                <Button
+                                                    onClick={handleGenerateTicket}
+                                                    variant="contained"
+                                                    startIcon={<Print />}
+                                                    sx={{ 
+                                                        minWidth: 180,
+                                                        py: 1.5,
+                                                        borderRadius: '10px',
+                                                        background: 'linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%)',
+                                                        boxShadow: '0 4px 12px rgba(111, 66, 193, 0.3)',
+                                                        '&:hover': {
+                                                            background: 'linear-gradient(135deg, #5a32a3 0%, #4c2a85 100%)',
+                                                            boxShadow: '0 6px 16px rgba(111, 66, 193, 0.4)'
+                                                        }
+                                                    }}
+                                                >
+                                                    Generar Ticket
+                                                </Button>
+                                            </Box>
+                                        </Grid>
                                     </Grid>
-                                    
-                                    <Grid item xs={12} md={6}>
-                                        <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" height="100%">
-                                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, textAlign: 'center' }}>
-                                                Generar ticket de la orden con el método de pago seleccionado
-                                            </Typography>
-                                            <Button
-                                                onClick={handleGenerateTicket}
-                                                variant="contained"
-                                                startIcon={<Print />}
-                                                sx={{ 
-                                                    minWidth: 180,
-                                                    py: 1.5,
-                                                    borderRadius: '10px',
-                                                    background: 'linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%)',
-                                                    boxShadow: '0 4px 12px rgba(111, 66, 193, 0.3)',
-                                                    '&:hover': {
-                                                        background: 'linear-gradient(135deg, #5a32a3 0%, #4c2a85 100%)',
-                                                        boxShadow: '0 6px 16px rgba(111, 66, 193, 0.4)'
-                                                    }
-                                                }}
-                                            >
-                                                Generar Ticket
-                                            </Button>
-                                        </Box>
-                                    </Grid>
-                                </Grid>
+                                ) : (
+                                    <Box>
+                                        <Typography variant="body1" sx={{ mb: 2, fontWeight: 500 }}>
+                                            Monto restante: S/ {remainingAmount.toFixed(2)}
+                                        </Typography>
+                                        
+                                        <Grid container spacing={2} sx={{ mb: 2 }}>
+                                            <Grid item xs={12} sm={4}>
+                                                <FormControl component="fieldset" fullWidth>
+                                                    <FormLabel component="legend" sx={{ fontWeight: 600, color: '#495057', mb: 1 }}>
+                                                        Método de Pago
+                                                    </FormLabel>
+                                                    <RadioGroup
+                                                        value={paymentMethod}
+                                                        onChange={(e) => setPaymentMethod(e.target.value)}
+                                                        row
+                                                    >
+                                                        <FormControlLabel value="efectivo" control={<Radio size="small" />} label="Efectivo" />
+                                                        <FormControlLabel value="yape" control={<Radio size="small" />} label="Yape" />
+                                                        <FormControlLabel value="pos" control={<Radio size="small" />} label="POS" />
+                                                    </RadioGroup>
+                                                </FormControl>
+                                            </Grid>
+                                            <Grid item xs={12} sm={4}>
+                                                <TextField
+                                                    label="Monto"
+                                                    type="number"
+                                                    value={currentPaymentAmount}
+                                                    onChange={(e) => setCurrentPaymentAmount(e.target.value)}
+                                                    fullWidth
+                                                    size="small"
+                                                    inputProps={{ step: "0.01", min: "0" }}
+                                                />
+                                                {paymentMethod === 'pos' && currentPaymentAmount && (
+                                                    <Typography variant="caption" color="warning.main" sx={{ mt: 0.5, display: 'block' }}>
+                                                        Total con cargo POS (5%): S/ {(parseFloat(currentPaymentAmount || 0) * 1.05).toFixed(2)}
+                                                    </Typography>
+                                                )}
+                                            </Grid>
+                                            <Grid item xs={12} sm={4}>
+                                                <Button
+                                                    onClick={addPayment}
+                                                    variant="contained"
+                                                    startIcon={<Add />}
+                                                    fullWidth
+                                                    disabled={remainingAmount <= 0}
+                                                    sx={{ height: '40px' }}
+                                                >
+                                                    Agregar Pago
+                                                </Button>
+                                            </Grid>
+                                        </Grid>
+                                        
+                                        {payments.length > 0 && (
+                                            <Box sx={{ mb: 2 }}>
+                                                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                                                    Pagos agregados:
+                                                </Typography>
+                                                {payments.map((payment, index) => (
+                                                    <Chip
+                                                        key={index}
+                                                        label={`${getPaymentMethodText(payment.paymentMethod)}: S/ ${payment.amount.toFixed(2)}`}
+                                                        onDelete={() => removePayment(index)}
+                                                        deleteIcon={<Delete />}
+                                                        sx={{ mr: 1, mb: 1 }}
+                                                        color="primary"
+                                                        variant="outlined"
+                                                    />
+                                                ))}
+                                            </Box>
+                                        )}
+                                    </Box>
+                                )}
                             </Paper>
                         </Box>
                     )}
@@ -880,7 +1083,11 @@ const OrderManager = () => {
                         <Button
                             onClick={handlePayOrder}
                             variant="contained"
-                            disabled={selectedOrder?.status === 'CANCELLED' || selectedOrder?.status === 'PAID'}
+                            disabled={
+                                selectedOrder?.status === 'CANCELLED' || 
+                                selectedOrder?.status === 'PAID' ||
+                                (showMultiplePayments && (payments.length === 0 || remainingAmount > 0))
+                            }
                             startIcon={<AttachMoney />}
                             sx={{ 
                                 minWidth: 140,
@@ -898,7 +1105,7 @@ const OrderManager = () => {
                                 }
                             }}
                         >
-                            Marcar como Pagado
+                            {showMultiplePayments ? 'Procesar Pagos' : 'Marcar como Pagado'}
                         </Button>
                     </DialogActions>
                 </DialogContent>
