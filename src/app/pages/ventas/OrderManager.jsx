@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Box,
     Button,
@@ -22,6 +22,11 @@ import {
     ListItemText,
     Alert,
     Snackbar,
+    FormControl,
+    FormLabel,
+    RadioGroup,
+    FormControlLabel,
+    Radio,
 } from '@mui/material';
 import {
     Visibility,
@@ -30,35 +35,23 @@ import {
     AccessTime,
     AttachMoney,
     Close,
+    Print,
+    Payment,
+    CreditCard,
 } from '@mui/icons-material';
 
 const API_URL = 'http://localhost:4000/api/orders';
 
 const OrderManager = () => {
     const [orders, setOrders] = useState([]);
-    const [tables, setTables] = useState([]);
-    const [products, setProducts] = useState([]);
-    const [openDialog, setOpenDialog] = useState(false);
     const [openDetailDialog, setOpenDetailDialog] = useState(false);
-    const [currentOrder, setCurrentOrder] = useState({
-        orderId: '',
-        tables: [],
-        items: [],
-        status: 'pending',
-        total: 0,
-        timestamp: new Date().toISOString(),
-    });
+    const [bluetoothDevice, setBluetoothDevice] = useState(null);
+    const [isBluetoothConnected, setIsBluetoothConnected] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-    const [newItem, setNewItem] = useState({ productId: '', quantity: 1, price: 0 });
+    const [paymentMethod, setPaymentMethod] = useState('efectivo');
 
-    useEffect(() => {
-        fetchOrders();
-        fetchTables();
-        fetchProducts();
-    }, []);
-
-    const fetchOrders = async () => {
+    const fetchOrders = useCallback(async () => {
         try {
             const response = await fetch(API_URL);
             const data = await response.json();
@@ -67,27 +60,11 @@ const OrderManager = () => {
             console.error('Error al cargar órdenes:', error);
             showSnackbar('Error al cargar órdenes', 'error');
         }
-    };
+    }, []);
 
-    const fetchTables = async () => {
-        try {
-            const response = await fetch('http://localhost:4000/api/tables');
-            const data = await response.json();
-            setTables(data);
-        } catch (error) {
-            console.error('Error al cargar mesas:', error);
-        }
-    };
-
-    const fetchProducts = async () => {
-        try {
-            const response = await fetch('http://localhost:4000/api/products');
-            const data = await response.json();
-            setProducts(data);
-        } catch (error) {
-            console.error('Error al cargar productos:', error);
-        }
-    };
+    useEffect(() => {
+        fetchOrders();
+    }, [fetchOrders]);
 
     const showSnackbar = (message, severity = 'success') => {
         setSnackbar({ open: true, message, severity });
@@ -95,35 +72,6 @@ const OrderManager = () => {
 
     const handleCloseSnackbar = () => {
         setSnackbar({ ...snackbar, open: false });
-    };
-
-    const handleOpenDialog = (order = null) => {
-        if (order) {
-            setCurrentOrder(order);
-        } else {
-            setCurrentOrder({
-                orderId: `ORD-${Date.now()}`,
-                tables: [],
-                items: [],
-                status: 'pending',
-                total: 0,
-                timestamp: new Date().toISOString(),
-            });
-        }
-        setOpenDialog(true);
-    };
-
-    const handleCloseDialog = () => {
-        setOpenDialog(false);
-        setCurrentOrder({
-            orderId: '',
-            tables: [],
-            items: [],
-            status: 'pending',
-            total: 0,
-            timestamp: new Date().toISOString(),
-        });
-        setNewItem({ productId: '', quantity: 1, price: 0 });
     };
 
     const handleOpenDetailDialog = (order) => {
@@ -136,110 +84,14 @@ const OrderManager = () => {
         setSelectedOrder(null);
     };
 
-    const calculateTotal = (items) => {
-        return items.reduce((total, item) => total + (item.price * item.quantity), 0);
-    };
-
-    const addItemToOrder = () => {
-        if (!newItem.productId || newItem.quantity <= 0) {
-            showSnackbar('Seleccione un producto y cantidad válida', 'error');
-            return;
+    // Función centralizada para calcular total con recargo POS
+    const calculateTotalWithPOS = (subtotal, paymentMethod) => {
+        if (paymentMethod === 'pos') {
+            const totalWithSurcharge = subtotal * 1.05;
+            // Redondear hacia arriba los decimales del segundo nivel
+            return Math.ceil(totalWithSurcharge * 10) / 10;
         }
-
-        const product = products.find(p => p.id === newItem.productId);
-        if (!product) {
-            showSnackbar('Producto no encontrado', 'error');
-            return;
-        }
-
-        const item = {
-            id: Date.now(),
-            productId: product.id,
-            name: product.name,
-            quantity: newItem.quantity,
-            price: newItem.price || product.price,
-            subtotal: (newItem.price || product.price) * newItem.quantity,
-        };
-
-        const updatedItems = [...currentOrder.items, item];
-        const updatedOrder = {
-            ...currentOrder,
-            items: updatedItems,
-            total: calculateTotal(updatedItems),
-        };
-
-        setCurrentOrder(updatedOrder);
-        setNewItem({ productId: '', quantity: 1, price: 0 });
-    };
-
-    const removeItemFromOrder = (itemId) => {
-        const updatedItems = currentOrder.items.filter(item => item.id !== itemId);
-        const updatedOrder = {
-            ...currentOrder,
-            items: updatedItems,
-            total: calculateTotal(updatedItems),
-        };
-        setCurrentOrder(updatedOrder);
-    };
-
-    const handleSaveOrder = async () => {
-        try {
-            if (currentOrder.tables.length === 0) {
-                showSnackbar('Debe seleccionar al menos una mesa', 'error');
-                return;
-            }
-
-            if (currentOrder.items.length === 0) {
-                showSnackbar('Debe agregar al menos un producto', 'error');
-                return;
-            }
-
-            const method = currentOrder.id ? 'PUT' : 'POST';
-            const url = currentOrder.id ? `${API_URL}/${currentOrder.id}` : API_URL;
-
-            const response = await fetch(url, {
-                method,
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(currentOrder),
-            });
-
-            if (!response.ok) {
-                throw new Error('Error al guardar la orden');
-            }
-
-            await fetchOrders();
-            handleCloseDialog();
-            showSnackbar(
-                currentOrder.id ? 'Orden actualizada exitosamente' : 'Orden creada exitosamente'
-            );
-        } catch (error) {
-            console.error('Error:', error);
-            showSnackbar('Error al guardar la orden', 'error');
-        }
-    };
-
-    const handleDeleteOrder = async (orderId) => {
-        if (!window.confirm('¿Está seguro de que desea eliminar esta orden?')) {
-            return;
-        }
-
-        try {
-            const response = await fetch(`${API_URL}/${orderId}`, {
-                method: 'DELETE',
-            });
-
-            if (!response.ok) {
-                throw new Error('Error al eliminar la orden');
-            }
-
-            await fetchOrders();
-            showSnackbar('Orden eliminada exitosamente');
-        } catch (error) {
-            console.error('Error:', error);
-            showSnackbar('Error al eliminar la orden', 'error');
-        }
+        return subtotal;
     };
 
     const updateOrderStatus = async (orderId, newStatus) => {
@@ -276,9 +128,263 @@ const OrderManager = () => {
     const handlePayOrder = async () => {
         try {
             await updateOrderStatus(selectedOrder.orderId, 'PAID');
+            
+            // Generar ticket automáticamente al marcar como pagado
+            const orderWithPayment = {
+                ...selectedOrder,
+                paymentMethod: paymentMethod
+            };
+            await handleGenerateTicket(orderWithPayment);
+            
             handleCloseDetailDialog();
         } catch (error) {
             // Error ya manejado en updateOrderStatus
+        }
+    };
+
+    const handleGenerateTicket = async () => {
+        try {
+            const order = selectedOrder;
+            if (!order) {
+                showSnackbar('No hay orden seleccionada', 'error');
+                return;
+            }
+
+            // Verificar si hay impresora Bluetooth disponible
+            if (!navigator.bluetooth) {
+                showSnackbar('Bluetooth no está disponible en este navegador', 'error');
+                return;
+            }
+
+            // Formatear la orden para el ticket térmico
+            const ticketOrder = {
+                orderId: order.orderId,
+                timestamp: order.timestamp,
+                tables: order.tables,
+                items: order.detalles.map(item => ({
+                    name: item.producto.name,
+                    quantity: item.quantity,
+                    unitPrice: parseFloat(item.unitPrice),
+                    subtotal: parseFloat(item.subtotal)
+                })),
+                paymentMethod: paymentMethod
+            };
+
+            // Generar ticket térmico ESC/POS
+            const ticketData = generateThermalTicket(ticketOrder);
+            
+            // Enviar a impresora Bluetooth
+            await printToBluetoothPrinter(ticketData);
+            
+            showSnackbar(`Ticket impreso exitosamente - Método de pago: ${getPaymentMethodText(paymentMethod)}`, 'success');
+        } catch (error) {
+            console.error('Error al imprimir ticket:', error);
+            showSnackbar('Error al imprimir ticket: ' + error.message, 'error');
+        }
+    };
+
+
+
+    const connectToPrinter = async () => {
+        try {
+            if (!navigator.bluetooth) {
+                throw new Error('Bluetooth no está disponible en este navegador');
+            }
+
+            // Si ya hay una conexión activa, usarla
+            if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                console.log('Usando conexión existente');
+                return bluetoothDevice;
+            }
+
+            // Intentar reconectar si tenemos un dispositivo guardado
+            if (bluetoothDevice && !bluetoothDevice.gatt.connected) {
+                try {
+                    await bluetoothDevice.gatt.connect();
+                    setIsBluetoothConnected(true);
+                    console.log('Reconectado a impresora existente');
+                    return bluetoothDevice;
+                } catch (error) {
+                    console.log('No se pudo reconectar, solicitando nueva selección');
+                }
+            }
+
+            // Solicitar nueva impresora
+            const device = await navigator.bluetooth.requestDevice({
+                filters: [
+                    { namePrefix: 'POS' },
+                    { namePrefix: 'Printer' },
+                    { namePrefix: 'BT' },
+                    { namePrefix: 'BlueTooth Printer' }
+                ],
+                optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
+            });
+
+            // Conectar al dispositivo
+            await device.gatt.connect();
+            
+            // Configurar listener para desconexión
+            device.addEventListener('gattserverdisconnected', () => {
+                console.log('Impresora desconectada');
+                setIsBluetoothConnected(false);
+            });
+
+            setBluetoothDevice(device);
+            setIsBluetoothConnected(true);
+            console.log('Nueva impresora conectada:', device.name);
+            
+            return device;
+        } catch (error) {
+            setIsBluetoothConnected(false);
+            throw new Error('Error de conexión Bluetooth: ' + error.message);
+        }
+    };
+
+    const printToBluetoothPrinter = async (ticketData) => {
+        try {
+            // Conectar o usar conexión existente
+            const device = await connectToPrinter();
+            
+            const service = await device.gatt.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
+            const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
+
+            // Enviar datos del ticket
+            const encoder = new TextEncoder();
+            const data = encoder.encode(ticketData);
+            
+            // Enviar en chunks de 20 bytes
+            for (let i = 0; i < data.length; i += 20) {
+                const chunk = data.slice(i, i + 20);
+                await characteristic.writeValue(chunk);
+                await new Promise(resolve => setTimeout(resolve, 50)); // Pequeña pausa
+            }
+
+            console.log('Ticket enviado exitosamente');
+            // NO desconectar - mantener la conexión activa
+        } catch (error) {
+            throw new Error('Error de impresión: ' + error.message);
+        }
+    };
+
+    const changePrinter = () => {
+        // Desconectar impresora actual si está conectada
+        if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+            bluetoothDevice.gatt.disconnect();
+        }
+        
+        // Limpiar estado
+        setBluetoothDevice(null);
+        setIsBluetoothConnected(false);
+        
+        setSnackbar({
+            open: true,
+            message: 'Impresora desconectada. Se solicitará seleccionar una nueva impresora en la próxima impresión.',
+            severity: 'info'
+        });
+    };
+
+    const generateThermalTicket = (order) => {
+        // Comandos ESC/POS
+        const ESC = '\x1B';
+        const commands = {
+            INIT: ESC + '\x40',
+            ALIGN_CENTER: ESC + '\x61\x01',
+            ALIGN_LEFT: ESC + '\x61\x00',
+            ALIGN_RIGHT: ESC + '\x61\x02',
+            BOLD_ON: ESC + '\x45\x01',
+            BOLD_OFF: ESC + '\x45\x00',
+            DOUBLE_HEIGHT: ESC + '\x21\x10',
+            NORMAL_SIZE: ESC + '\x21\x00',
+            FEED_LINE: '\x0A',
+            CUT_PAPER: '\x1D\x56\x00'
+        };
+
+        let ticket = '';
+        
+        // Inicializar impresora
+        ticket += commands.INIT;
+        
+        // Encabezado
+        ticket += commands.ALIGN_CENTER + commands.BOLD_ON + commands.DOUBLE_HEIGHT;
+        ticket += 'MAREA PICANTE\n';
+        ticket += commands.NORMAL_SIZE + commands.BOLD_OFF;
+        ticket += 'Restaurante\n';
+        ticket += commands.FEED_LINE;
+        
+        // Información de la orden
+        ticket += commands.ALIGN_LEFT;
+        ticket += '================================\n';
+        ticket += `Orden #: ${order.orderId}\n`;
+        const orderDate = order.createdAt || order.timestamp || new Date();
+        ticket += `Fecha: ${new Date(orderDate).toLocaleString('es-PE')}\n`;
+        ticket += `Mesa(s): ${order.tables.map(t => t.number).join(', ')}\n`;
+        ticket += '================================\n';
+        ticket += commands.FEED_LINE;
+        
+        // Productos
+        ticket += commands.BOLD_ON;
+        ticket += 'PRODUCTOS:\n';
+        ticket += commands.BOLD_OFF;
+        ticket += commands.FEED_LINE;
+        
+        order.items.forEach(item => {
+            const subtotal = Number(item.unitPrice) * Number(item.quantity);
+            ticket += `${item.name}\n`;
+            ticket += `${item.quantity} x S/.${Number(item.unitPrice).toFixed(2)} = S/.${subtotal.toFixed(2)}\n`;
+            ticket += commands.FEED_LINE;
+        });
+        
+        // Total
+        ticket += '--------------------------------\n';
+        const subtotal = order.items.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
+        
+        ticket += commands.ALIGN_RIGHT;
+        ticket += `Subtotal: S/.${subtotal.toFixed(2)}\n`;
+        
+        if (order.paymentMethod === 'pos') {
+            const posIncrease = subtotal * 0.05;
+            ticket += `Recargo POS (5%): S/.${posIncrease.toFixed(2)}\n`;
+        }
+        
+        const total = calculateTotalWithPOS(subtotal, order.paymentMethod);
+        ticket += '--------------------------------\n';
+        ticket += commands.BOLD_ON + commands.DOUBLE_HEIGHT;
+        ticket += `TOTAL: S/.${total.toFixed(2)}\n`;
+        ticket += commands.NORMAL_SIZE + commands.BOLD_OFF;
+        ticket += commands.ALIGN_LEFT;
+        ticket += '================================\n';
+        
+        // Método de pago
+        ticket += commands.FEED_LINE;
+        ticket += commands.BOLD_ON;
+        ticket += `METODO DE PAGO: ${getPaymentMethodText(order.paymentMethod).toUpperCase()}\n`;
+        ticket += commands.BOLD_OFF;
+        
+        // Pie de página
+        ticket += commands.FEED_LINE;
+        ticket += commands.ALIGN_CENTER;
+        ticket += '¡Gracias por su preferencia!\n';
+        ticket += 'Vuelva pronto\n';
+        
+        // Alimentar papel y cortar
+        ticket += commands.FEED_LINE;
+        ticket += commands.FEED_LINE;
+        ticket += commands.FEED_LINE;
+        ticket += commands.CUT_PAPER;
+        
+        return ticket;
+    };
+
+    const getPaymentMethodText = (method) => {
+        switch (method) {
+            case 'efectivo':
+                return 'Efectivo';
+            case 'yape':
+                return 'Yape';
+            case 'pos':
+                return 'POS';
+            default:
+                return 'Efectivo';
         }
     };
 
@@ -334,6 +440,32 @@ const OrderManager = () => {
                     <Typography variant="h4" component="h2">
                         Gestión de Órdenes
                     </Typography>
+                    <Box display="flex" alignItems="center" gap={2}>
+                        <Box display="flex" alignItems="center">
+                            <Box
+                                sx={{
+                                    width: 12,
+                                    height: 12,
+                                    borderRadius: '50%',
+                                    backgroundColor: isBluetoothConnected ? '#4caf50' : '#f44336',
+                                    mr: 1
+                                }}
+                            />
+                            <Typography variant="body2" color="text.secondary">
+                                {isBluetoothConnected ? 'Impresora conectada' : 'Sin impresora'}
+                            </Typography>
+                        </Box>
+                        {isBluetoothConnected && (
+                            <Button
+                                onClick={changePrinter}
+                                variant="outlined"
+                                size="small"
+                                sx={{ borderRadius: '8px' }}
+                            >
+                                Cambiar Impresora
+                            </Button>
+                        )}
+                    </Box>
                 </Box>
 
                 <TableContainer sx={{ padding: 2 }}>
@@ -611,8 +743,103 @@ const OrderManager = () => {
                                     Total de la Orden
                                 </Typography>
                                 <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                                    S/ {selectedOrder.detalles.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0).toFixed(2)}
+                                    S/ {(() => {
+                                        const subtotal = selectedOrder.detalles.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
+                                        return calculateTotalWithPOS(subtotal, paymentMethod).toFixed(2);
+                                    })()}
                                 </Typography>
+                                {paymentMethod === 'pos' && (
+                                    <Typography variant="body2" sx={{ opacity: 0.9, mt: 1 }}>
+                                        (Incluye 5% por uso de POS)
+                                    </Typography>
+                                )}
+                            </Paper>
+
+                            {/* Sección de Métodos de Pago y Generar Ticket */}
+                            <Paper 
+                                elevation={0}
+                                sx={{ 
+                                    mt: 3, 
+                                    p: 3, 
+                                    borderRadius: '12px',
+                                    border: '1px solid #e9ecef'
+                                }}
+                            >
+                                <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#495057' }}>
+                                    Métodos de Pago y Ticket
+                                </Typography>
+                                
+                                <Grid container spacing={3}>
+                                    <Grid item xs={12} md={6}>
+                                        <FormControl component="fieldset">
+                                            <FormLabel component="legend" sx={{ fontWeight: 600, color: '#495057', mb: 1 }}>
+                                                Seleccionar Método de Pago
+                                            </FormLabel>
+                                            <RadioGroup
+                                                value={paymentMethod}
+                                                onChange={(e) => setPaymentMethod(e.target.value)}
+                                                sx={{ mt: 1 }}
+                                            >
+                                                <FormControlLabel 
+                                                    value="efectivo" 
+                                                    control={<Radio />} 
+                                                    label={
+                                                        <Box display="flex" alignItems="center">
+                                                            <AttachMoney sx={{ mr: 1, color: '#28a745' }} />
+                                                            Efectivo
+                                                        </Box>
+                                                    }
+                                                />
+                                                <FormControlLabel 
+                                                    value="yape" 
+                                                    control={<Radio />} 
+                                                    label={
+                                                        <Box display="flex" alignItems="center">
+                                                            <Payment sx={{ mr: 1, color: '#6f42c1' }} />
+                                                            Yape
+                                                        </Box>
+                                                    }
+                                                />
+                                                <FormControlLabel 
+                                                    value="pos" 
+                                                    control={<Radio />} 
+                                                    label={
+                                                        <Box display="flex" alignItems="center">
+                                                            <CreditCard sx={{ mr: 1, color: '#007bff' }} />
+                                                            POS
+                                                        </Box>
+                                                    }
+                                                />
+                                            </RadioGroup>
+                                        </FormControl>
+                                    </Grid>
+                                    
+                                    <Grid item xs={12} md={6}>
+                                        <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" height="100%">
+                                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, textAlign: 'center' }}>
+                                                Generar ticket de la orden con el método de pago seleccionado
+                                            </Typography>
+                                            <Button
+                                                onClick={handleGenerateTicket}
+                                                variant="contained"
+                                                startIcon={<Print />}
+                                                sx={{ 
+                                                    minWidth: 180,
+                                                    py: 1.5,
+                                                    borderRadius: '10px',
+                                                    background: 'linear-gradient(135deg, #6f42c1 0%, #5a32a3 100%)',
+                                                    boxShadow: '0 4px 12px rgba(111, 66, 193, 0.3)',
+                                                    '&:hover': {
+                                                        background: 'linear-gradient(135deg, #5a32a3 0%, #4c2a85 100%)',
+                                                        boxShadow: '0 6px 16px rgba(111, 66, 193, 0.4)'
+                                                    }
+                                                }}
+                                            >
+                                                Generar Ticket
+                                            </Button>
+                                        </Box>
+                                    </Grid>
+                                </Grid>
                             </Paper>
                         </Box>
                     )}
