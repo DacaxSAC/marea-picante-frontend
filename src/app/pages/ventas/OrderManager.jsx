@@ -59,10 +59,24 @@ const OrderManager = () => {
     const [showMultiplePayments, setShowMultiplePayments] = useState(false);
     const [currentPaymentAmount, setCurrentPaymentAmount] = useState('');
     const [remainingAmount, setRemainingAmount] = useState(0);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [showDateFilter, setShowDateFilter] = useState(false);
 
-    const fetchOrders = useCallback(async () => {
+    const fetchOrders = useCallback(async (filterStartDate = null, filterEndDate = null) => {
         try {
-            const response = await fetch(API_URL);
+            let url = API_URL;
+            
+            // Si se proporcionan fechas de filtro, agregarlas como parámetros de consulta
+            if (filterStartDate && filterEndDate) {
+                const params = new URLSearchParams({
+                    startDate: filterStartDate,
+                    endDate: filterEndDate
+                });
+                url += `?${params.toString()}`;
+            }
+            
+            const response = await fetch(url);
             const data = await response.json();
             setOrders(data);
         } catch (error) {
@@ -72,7 +86,11 @@ const OrderManager = () => {
     }, []);
 
     useEffect(() => {
-        fetchOrders();
+        // Por defecto, cargar órdenes del día actual
+        const today = new Date().toISOString().split('T')[0];
+        setStartDate(today);
+        setEndDate(today);
+        fetchOrders(today, today);
     }, [fetchOrders]);
 
     const showSnackbar = (message, severity = 'success') => {
@@ -81,6 +99,35 @@ const OrderManager = () => {
 
     const handleCloseSnackbar = () => {
         setSnackbar({ ...snackbar, open: false });
+    };
+
+    const handleApplyDateFilter = () => {
+        if (startDate && endDate) {
+            fetchOrders(startDate, endDate);
+            showSnackbar('Filtro aplicado correctamente');
+        } else {
+            showSnackbar('Por favor seleccione ambas fechas', 'error');
+        }
+    };
+
+    const handleClearDateFilter = () => {
+        setStartDate('');
+        setEndDate('');
+        fetchOrders(); // Cargar órdenes sin filtro (solo del día actual)
+        showSnackbar('Filtro eliminado - mostrando órdenes del día');
+    };
+
+    const getTodayDate = () => {
+        const today = new Date();
+        return today.toISOString().split('T')[0];
+    };
+
+    const handleTodayFilter = () => {
+        const today = getTodayDate();
+        setStartDate(today);
+        setEndDate(today);
+        fetchOrders(today, today);
+        showSnackbar('Mostrando órdenes de hoy');
     };
 
     const handleOpenDetailDialog = (order) => {
@@ -147,7 +194,7 @@ const OrderManager = () => {
                         : payment.amount
                 }));
             } else {
-                const subtotal = selectedOrder.detalles.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
+                const subtotal = selectedOrder.orderDetails.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
                 const total = calculateTotalWithPOS(subtotal, paymentMethod);
                 paymentsToProcess = [{
                     paymentMethod: paymentMethod,
@@ -203,8 +250,8 @@ const OrderManager = () => {
                 orderId: order.orderId,
                 timestamp: order.timestamp,
                 tables: order.tables,
-                items: order.detalles.map(item => ({
-                    name: item.producto.name,
+                items: order.orderDetails.map(item => ({
+                    name: item.product.name,
                     quantity: item.quantity,
                     unitPrice: parseFloat(item.unitPrice),
                     subtotal: parseFloat(item.subtotal)
@@ -474,7 +521,7 @@ const OrderManager = () => {
 
     const getRemainingAmount = () => {
         if (!selectedOrder) return 0;
-        const subtotal = selectedOrder.detalles.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
+        const subtotal = selectedOrder.orderDetails.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
         const total = calculateTotalWithPOS(subtotal, 'efectivo'); // Usar efectivo como base
         const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
         return total - totalPaid;
@@ -485,7 +532,7 @@ const OrderManager = () => {
         setPayments([]);
         setCurrentPaymentAmount('');
         if (!showMultiplePayments && selectedOrder) {
-            const subtotal = selectedOrder.detalles.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
+            const subtotal = selectedOrder.orderDetails.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
             const total = calculateTotalWithPOS(subtotal, 'efectivo');
             setRemainingAmount(total);
         }
@@ -571,6 +618,65 @@ const OrderManager = () => {
                     </Box>
                 </Box>
 
+                {/* Controles de filtro de fecha */}
+                <Box p={2} borderBottom={1} borderColor="divider">
+                    <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                        <Button
+                            variant="outlined"
+                            onClick={() => setShowDateFilter(!showDateFilter)}
+                            sx={{ borderRadius: '8px' }}
+                        >
+                            {showDateFilter ? 'Ocultar Filtros' : 'Filtrar por Fecha'}
+                        </Button>
+                        
+                        <Button
+                            variant="contained"
+                            onClick={handleTodayFilter}
+                            sx={{ borderRadius: '8px' }}
+                        >
+                            Hoy
+                        </Button>
+                        
+                        {showDateFilter && (
+                            <>
+                                <TextField
+                                    label="Fecha Inicio"
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    InputLabelProps={{ shrink: true }}
+                                    size="small"
+                                    sx={{ minWidth: 150 }}
+                                />
+                                <TextField
+                                    label="Fecha Fin"
+                                    type="date"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                    InputLabelProps={{ shrink: true }}
+                                    size="small"
+                                    sx={{ minWidth: 150 }}
+                                />
+                                <Button
+                                    variant="contained"
+                                    onClick={handleApplyDateFilter}
+                                    disabled={!startDate || !endDate}
+                                    sx={{ borderRadius: '8px' }}
+                                >
+                                    Aplicar
+                                </Button>
+                                <Button
+                                    variant="outlined"
+                                    onClick={handleClearDateFilter}
+                                    sx={{ borderRadius: '8px' }}
+                                >
+                                    Limpiar
+                                </Button>
+                            </>
+                        )}
+                    </Box>
+                </Box>
+
                 <TableContainer sx={{ padding: 2 }}>
                     <Table>
                         <TableHead>
@@ -602,7 +708,10 @@ const OrderManager = () => {
                                             ) : (
                                                 <>
                                                     <TableRestaurant sx={{ mr: 1 }} />
-                                                    {order.tables.map(t => t.number).sort((a, b) => a - b).join(', ')}
+                                                    {order.tables && order.tables.length > 0 
+                                                        ? order.tables.map(t => t.number).sort((a, b) => a - b).join(', ')
+                                                        : 'Sin mesas asignadas'
+                                                    }
                                                 </>
                                             )}
                                         </Box>
@@ -648,7 +757,7 @@ const OrderManager = () => {
                                     <TableCell>
                                         <Box display="flex" alignItems="center">
                                             <AttachMoney sx={{ mr: 1 }} />
-                                            S/ {order.detalles.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0).toFixed(2)}
+                                            S/ {order.orderDetails.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0).toFixed(2)}
                                         </Box>
                                     </TableCell>
                                     <TableCell>
@@ -816,18 +925,18 @@ const OrderManager = () => {
                                     </Typography>
                                 </Box>
                                 <List sx={{ p: 0 }}>
-                                    {selectedOrder.detalles.map((item, index) => (
+                                    {selectedOrder.orderDetails.map((item, index) => (
                                         <ListItem 
                                             key={item.orderDetailId}
                                             sx={{
-                                                borderBottom: index < selectedOrder.detalles.length - 1 ? '1px solid #f1f3f4' : 'none',
+                                                borderBottom: index < selectedOrder.orderDetails.length - 1 ? '1px solid #f1f3f4' : 'none',
                                                 py: 2
                                             }}
                                         >
                                             <ListItemText
                                                 primary={
                                                     <Typography variant="body1" sx={{ fontWeight: 500, mb: 0.5 }}>
-                                                        {item.producto.name}
+                                                        {item.product.name}
                                                     </Typography>
                                                 }
                                                 secondary={
@@ -863,7 +972,7 @@ const OrderManager = () => {
                                 </Typography>
                                 <Typography variant="h4" sx={{ fontWeight: 700 }}>
                                     S/ {(() => {
-                                        const subtotal = selectedOrder.detalles.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
+                                        const subtotal = selectedOrder.orderDetails.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
                                         return calculateTotalWithPOS(subtotal, paymentMethod).toFixed(2);
                                     })()}
                                 </Typography>

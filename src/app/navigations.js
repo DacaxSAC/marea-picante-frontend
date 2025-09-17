@@ -1,41 +1,21 @@
 export const navigations = [
   { name: "Dashboard", path: "/dashboard/default", icon: "dashboard" },
-  { label: "PROCESOS OPERATIVOS", type: "label" },
+  {
+    name: "Mantenedores",
+    icon: "security",
+    children: [
+      { name: "Productos", iconText: "SI", path: "/mantenedores/productos" },
+      { name: "Categorías", iconText: "SU", path: "/mantenedores/categorias" },
+      { name: "Mesas", iconText: "SU", path: "/mantenedores/mesas" },
+    ]
+  },
   {
     name: "Ventas",
     icon: "security",
     children: [
       { name: "Órdenes", iconText: "SI", path: "/ventas/ordenes" },
-      { name: "Mesas", iconText: "SU", path: "/ventas/mesas" },
-      { name: "Clientes", iconText: "FP", path: "/session/forgot-password" },
-    ]
-  },
-  {
-    name: "Inventario",
-    icon: "security",
-    children: [
-      { name: "Productos", iconText: "SI", path: "/inventario/productos" },
-      { name: "Categorías", iconText: "SU", path: "/inventario/categorias" },
-      { name: "Kardex", iconText: "FP", path: "/inventario/productos" },
-    ]
-  },
-  { label: "PROCESOS DE GESTIÓN", type: "label" },
-  {
-    name: "Administración",
-    icon: "security",
-    children: [
-      { name: "Empleados", iconText: "SI", path: "/session/signin" },
-      { name: "Usuarios", iconText: "SU", path: "/administracion/usuarios" },
-      { name: "Configuración", iconText: "FP", path: "/session/forgot-password" },
-    ]
-  },
-  {
-    name: "Caja",
-    icon: "security",
-    children: [
-      { name: "Apertura/Cierre", iconText: "SI", path: "/session/signin" },
-      { name: "Movimientos", iconText: "SU", path: "/session/signup" },
-      { name: "Reportes", iconText: "SU", path: "/session/signup" }
+      { name: "Apertura/Cierre", iconText: "FP", path: "/ventas/apertura-cierre" },
+      { name: "Movimientos", iconText: "SU", path: "/ventas/movimientos" },
     ]
   },
   // { label: "PAGES", type: "label" },
