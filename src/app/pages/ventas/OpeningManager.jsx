@@ -42,8 +42,10 @@ const OpeningManager = () => {
         closingBalance: '',
         notes: ''
     });
+    const [closeResult, setCloseResult] = useState(null);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
     const [dailySummary, setDailySummary] = useState(null);
+    const [cashRegisterHistory, setCashRegisterHistory] = useState([]);
 
     const fetchCashRegisterStatus = useCallback(async () => {
         try {
@@ -69,17 +71,48 @@ const OpeningManager = () => {
             const response = await fetch(`${API_URL}/daily-summary?date=${today}`);
             if (response.ok) {
                 const data = await response.json();
-                setDailySummary(data.summary);
+                
+                // Procesar los datos agrupados para calcular totales
+                const processedSummary = {
+                    totalIncome: 0,
+                    totalExpenses: 0
+                };
+                
+                if (data.summary && Array.isArray(data.summary)) {
+                    data.summary.forEach(item => {
+                        const amount = parseFloat(item.total) || 0;
+                        if (item.type === 'INGRESO') {
+                            processedSummary.totalIncome += amount;
+                        } else if (item.type === 'EGRESO') {
+                            processedSummary.totalExpenses += amount;
+                        }
+                    });
+                }
+                
+                setDailySummary(processedSummary);
             }
         } catch (error) {
             console.error('Error fetching daily summary:', error);
         }
     }, []);
 
+    const fetchCashRegisterHistory = useCallback(async () => {
+        try {
+            const response = await fetch(`${API_URL}/register-history`);
+            if (response.ok) {
+                const data = await response.json();
+                setCashRegisterHistory(data.history || []);
+            }
+        } catch (error) {
+            console.error('Error fetching cash register history:', error);
+        }
+    }, []);
+
     useEffect(() => {
         fetchCashRegisterStatus();
         fetchDailySummary();
-    }, [fetchCashRegisterStatus, fetchDailySummary]);
+        fetchCashRegisterHistory();
+    }, [fetchCashRegisterStatus, fetchDailySummary, fetchCashRegisterHistory]);
 
     const handleOpenCashRegister = async () => {
         try {
@@ -107,7 +140,8 @@ const OpeningManager = () => {
             setOpenDialog(false);
             setFormData({ openingBalance: '', closingBalance: '', notes: '' });
             fetchCashRegisterStatus();
-            fetchDailySummary();
+            // Limpiar el resumen del día cuando se cierra la caja
+            setDailySummary(null);
         } catch (error) {
             console.error('Error:', error);
             setSnackbar({
@@ -135,6 +169,9 @@ const OpeningManager = () => {
                 throw new Error('Error al cerrar la caja');
             }
 
+            const result = await response.json();
+            setCloseResult(result);
+
             setSnackbar({
                 open: true,
                 message: 'Caja cerrada exitosamente',
@@ -145,6 +182,7 @@ const OpeningManager = () => {
             setFormData({ openingBalance: '', closingBalance: '', notes: '' });
             fetchCashRegisterStatus();
             fetchDailySummary();
+            fetchCashRegisterHistory(); // Actualizar el historial de cajas
         } catch (error) {
             console.error('Error:', error);
             setSnackbar({
@@ -236,6 +274,9 @@ const OpeningManager = () => {
                                             </Typography>
                                             <Typography variant="body1" sx={{ mb: 1 }}>
                                                 <strong>Balance Inicial:</strong> {formatCurrency(cashRegister.openingBalance)}
+                                            </Typography>
+                                            <Typography variant="body1" sx={{ mb: 1 }}>
+                                                <strong>Balance Actual:</strong> {formatCurrency(cashRegister.currentBalance || cashRegister.openingBalance)}
                                             </Typography>
                                             {cashRegister.notes && (
                                                 <Typography variant="body2" color="text.secondary">
@@ -385,16 +426,64 @@ const OpeningManager = () => {
                                 helperText="Ingrese el monto inicial en caja"
                             />
                         ) : (
-                            <TextField
-                                label="Balance Final"
-                                type="number"
-                                value={formData.closingBalance}
-                                onChange={(e) => setFormData({ ...formData, closingBalance: e.target.value })}
-                                fullWidth
-                                required
-                                inputProps={{ min: 0, step: 0.01 }}
-                                helperText="Ingrese el monto final contado en caja"
-                            />
+                            <>
+                                {/* Mostrar balance esperado */}
+                                {cashRegister && dailySummary && (
+                                    <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
+                                        <Typography variant="h6" gutterBottom>
+                                            Información de Cierre
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                            <Typography variant="body2">Balance Inicial:</Typography>
+                                            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                                {formatCurrency(cashRegister.openingBalance)}
+                                            </Typography>
+                                        </Box>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                            <Typography variant="body2">Total Ingresos:</Typography>
+                                            <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'success.main' }}>
+                                                {formatCurrency(dailySummary.totalIncome || 0)}
+                                            </Typography>
+                                        </Box>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                            <Typography variant="body2">Total Egresos:</Typography>
+                                            <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'error.main' }}>
+                                                {formatCurrency(dailySummary.totalExpenses || 0)}
+                                            </Typography>
+                                        </Box>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, pt: 1, borderTop: 1, borderColor: 'divider' }}>
+                                            <Typography variant="body1" sx={{ fontWeight: 'bold' }}>Balance Esperado:</Typography>
+                                            <Typography variant="body1" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                                                {formatCurrency(cashRegister.openingBalance + (dailySummary.totalIncome || 0) - (dailySummary.totalExpenses || 0))}
+                                            </Typography>
+                                        </Box>
+                                        {formData.closingBalance && (
+                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                                <Typography variant="body1" sx={{ fontWeight: 'bold' }}>Diferencia:</Typography>
+                                                <Typography 
+                                                    variant="body1" 
+                                                    sx={{ 
+                                                        fontWeight: 'bold',
+                                                        color: (parseFloat(formData.closingBalance) - (cashRegister.openingBalance + (dailySummary.totalIncome || 0) - (dailySummary.totalExpenses || 0))) >= 0 ? 'success.main' : 'error.main'
+                                                    }}
+                                                >
+                                                    {formatCurrency(parseFloat(formData.closingBalance || 0) - (cashRegister.openingBalance + (dailySummary.totalIncome || 0) - (dailySummary.totalExpenses || 0)))}
+                                                </Typography>
+                                            </Box>
+                                        )}
+                                    </Paper>
+                                )}
+                                <TextField
+                                    label="Balance Final"
+                                    type="number"
+                                    value={formData.closingBalance}
+                                    onChange={(e) => setFormData({ ...formData, closingBalance: e.target.value })}
+                                    fullWidth
+                                    required
+                                    inputProps={{ min: 0, step: 0.01 }}
+                                    helperText="Ingrese el monto final contado en caja"
+                                />
+                            </>
                         )}
                         <TextField
                             label="Notas (Opcional)"
@@ -425,6 +514,79 @@ const OpeningManager = () => {
                     </Button>
                 </DialogActions>
             </Dialog>
+
+            {/* Historial de Cajas */}
+            <Card sx={{ mt: 3 }}>
+                <Box sx={{ p: 2 }}>
+                    <Typography variant="h6" gutterBottom>
+                        Historial de Cajas
+                    </Typography>
+                    {cashRegisterHistory.length > 0 ? (
+                        <TableContainer component={Paper}>
+                            <Table>
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell>Fecha de Apertura</TableCell>
+                                        <TableCell>Fecha de Cierre</TableCell>
+                                        <TableCell>Balance Inicial</TableCell>
+                                        <TableCell>Balance Final</TableCell>
+                                        <TableCell>Diferencia</TableCell>
+                                        <TableCell>Estado</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    {cashRegisterHistory.map((register) => {
+                                        const difference = register.closingBalance - register.openingBalance;
+                                        return (
+                                            <TableRow key={register.registerId}>
+                                                <TableCell>
+                                                    {new Date(register.openingDate).toLocaleDateString('es-ES', {
+                                                        year: 'numeric',
+                                                        month: '2-digit',
+                                                        day: '2-digit',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })}
+                                                </TableCell>
+                                                <TableCell>
+                                                    {register.closingDate ? new Date(register.closingDate).toLocaleDateString('es-ES', {
+                                                        year: 'numeric',
+                                                        month: '2-digit',
+                                                        day: '2-digit',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    }) : '-'}
+                                                </TableCell>
+                                                <TableCell>{formatCurrency(register.openingBalance)}</TableCell>
+                                                <TableCell>{formatCurrency(register.closingBalance)}</TableCell>
+                                                <TableCell>
+                                                    <Typography
+                                                        color={difference >= 0 ? 'success.main' : 'error.main'}
+                                                        fontWeight="bold"
+                                                    >
+                                                        {formatCurrency(difference)}
+                                                    </Typography>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Chip
+                                                        label={register.status}
+                                                        color={register.status === 'CERRADA' ? 'default' : 'success'}
+                                                        size="small"
+                                                    />
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+                    ) : (
+                        <Typography color="text.secondary">
+                            No hay historial de cajas disponible
+                        </Typography>
+                    )}
+                </Box>
+            </Card>
 
             {/* Snackbar para notificaciones */}
             <Snackbar

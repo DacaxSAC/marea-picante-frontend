@@ -45,9 +45,13 @@ const MovementManager = () => {
         paymentMethod: 'EFECTIVO'
     });
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-    const [dateRange, setDateRange] = useState({
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date().toISOString().split('T')[0]
+    const [dateRange, setDateRange] = useState(() => {
+        const today = new Date();
+        const todayString = today.toLocaleDateString('en-CA'); // Formato YYYY-MM-DD en zona horaria local
+        return {
+            startDate: todayString,
+            endDate: todayString
+        };
     });
 
     const fetchMovements = useCallback(async () => {
@@ -203,7 +207,7 @@ const MovementManager = () => {
                             <Table>
                                 <TableHead>
                                     <TableRow>
-                                        <TableCell>Fecha</TableCell>
+                                        <TableCell>Fecha y Hora</TableCell>
                                         <TableCell>Tipo</TableCell>
                                         <TableCell>Descripción</TableCell>
                                         <TableCell align="right">Monto</TableCell>
@@ -227,7 +231,7 @@ const MovementManager = () => {
                                         movements.map((movement) => (
                                             <TableRow key={movement.cashMovementId}>
                                                 <TableCell>
-                                                    {new Date(movement.date).toLocaleDateString('es-CO')}
+                                                    {new Date(movement.date).toLocaleString('es-CO')}
                                                 </TableCell>
                                                 <TableCell>
                                                     <Chip

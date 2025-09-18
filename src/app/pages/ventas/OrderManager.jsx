@@ -87,10 +87,13 @@ const OrderManager = () => {
 
     useEffect(() => {
         // Por defecto, cargar órdenes del día actual
-        const today = new Date().toISOString().split('T')[0];
-        setStartDate(today);
-        setEndDate(today);
-        fetchOrders(today, today);
+        const today = new Date();
+        const todayString = today.getFullYear() + '-' + 
+            String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+            String(today.getDate()).padStart(2, '0');
+        setStartDate(todayString);
+        setEndDate(todayString);
+        fetchOrders(todayString, todayString);
     }, [fetchOrders]);
 
     const showSnackbar = (message, severity = 'success') => {
@@ -119,7 +122,9 @@ const OrderManager = () => {
 
     const getTodayDate = () => {
         const today = new Date();
-        return today.toISOString().split('T')[0];
+        return today.getFullYear() + '-' + 
+            String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+            String(today.getDate()).padStart(2, '0');
     };
 
     const handleTodayFilter = () => {
