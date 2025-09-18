@@ -38,6 +38,7 @@ const API_URL = 'http://localhost:4000/api/cash-movements';
 const MovementManager = () => {
     const [movements, setMovements] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [loadingExpense, setLoadingExpense] = useState(false);
     const [openExpenseDialog, setOpenExpenseDialog] = useState(false);
     const [expenseData, setExpenseData] = useState({
         amount: '',
@@ -82,6 +83,7 @@ const MovementManager = () => {
 
     const handleCreateExpense = async () => {
         try {
+            setLoadingExpense(true);
             const response = await fetch(`${API_URL}/expense`, {
                 method: 'POST',
                 headers: {
@@ -113,6 +115,8 @@ const MovementManager = () => {
                 message: 'Error al registrar el egreso',
                 severity: 'error'
             });
+        } finally {
+            setLoadingExpense(false);
         }
     };
 
@@ -203,48 +207,119 @@ const MovementManager = () => {
                         </Box>
 
                         {/* Tabla de movimientos */}
-                        <TableContainer component={Paper}>
-                            <Table>
+                        <TableContainer component={Paper} sx={{ boxShadow: 2, borderRadius: 2 }}>
+                            <Table sx={{ minWidth: 650 }}>
                                 <TableHead>
-                                    <TableRow>
-                                        <TableCell>Fecha y Hora</TableCell>
-                                        <TableCell>Tipo</TableCell>
-                                        <TableCell>Descripción</TableCell>
-                                        <TableCell align="right">Monto</TableCell>
-                                        <TableCell>Método de Pago</TableCell>
+                                    <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                                        <TableCell sx={{ 
+                                            fontWeight: 'bold', 
+                                            fontSize: '0.95rem',
+                                            padding: '16px 24px',
+                                            width: '20%'
+                                        }}>Fecha y Hora</TableCell>
+                                        <TableCell sx={{ 
+                                            fontWeight: 'bold', 
+                                            fontSize: '0.95rem',
+                                            padding: '16px 16px',
+                                            width: '15%'
+                                        }}>Tipo</TableCell>
+                                        <TableCell sx={{ 
+                                            fontWeight: 'bold', 
+                                            fontSize: '0.95rem',
+                                            padding: '16px 16px',
+                                            width: '35%'
+                                        }}>Descripción</TableCell>
+                                        <TableCell align="right" sx={{ 
+                                            fontWeight: 'bold', 
+                                            fontSize: '0.95rem',
+                                            padding: '16px 16px',
+                                            width: '15%'
+                                        }}>Monto</TableCell>
+                                        <TableCell sx={{ 
+                                            fontWeight: 'bold', 
+                                            fontSize: '0.95rem',
+                                            padding: '16px 24px',
+                                            width: '15%'
+                                        }}>Método de Pago</TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
                                     {loading ? (
                                         <TableRow>
-                                            <TableCell colSpan={5} align="center">
-                                                Cargando movimientos...
+                                            <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    Cargando movimientos...
+                                                </Typography>
                                             </TableCell>
                                         </TableRow>
                                     ) : movements.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={5} align="center">
-                                                No hay movimientos en el rango de fechas seleccionado
+                                            <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    No hay movimientos en el rango de fechas seleccionado
+                                                </Typography>
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        movements.map((movement) => (
-                                            <TableRow key={movement.cashMovementId}>
-                                                <TableCell>
-                                                    {new Date(movement.date).toLocaleString('es-CO')}
+                                        movements.map((movement, index) => (
+                                            <TableRow 
+                                                key={movement.cashMovementId}
+                                                sx={{ 
+                                                    '&:nth-of-type(odd)': { backgroundColor: '#fafafa' },
+                                                    '&:hover': { backgroundColor: '#f0f0f0' },
+                                                    transition: 'background-color 0.2s ease'
+                                                }}
+                                            >
+                                                <TableCell sx={{ 
+                                                    fontSize: '0.9rem', 
+                                                    color: '#666',
+                                                    padding: '12px 24px'
+                                                }}>
+                                                    {new Date(movement.date).toLocaleString('es-CO', {
+                                                        year: 'numeric',
+                                                        month: '2-digit',
+                                                        day: '2-digit',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })}
                                                 </TableCell>
-                                                <TableCell>
+                                                <TableCell sx={{ padding: '12px 16px' }}>
                                                     <Chip
                                                         label={getMovementTypeLabel(movement.type)}
                                                         color={getMovementTypeColor(movement.type)}
                                                         size="small"
+                                                        sx={{ fontWeight: 'medium' }}
                                                     />
                                                 </TableCell>
-                                                <TableCell>{movement.description}</TableCell>
-                                                <TableCell align="right">
-                                                    {formatCurrency(movement.amount)}
+                                                <TableCell sx={{ 
+                                                    fontSize: '0.9rem',
+                                                    padding: '12px 16px',
+                                                    maxWidth: '250px',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap'
+                                                }}>
+                                                    {movement.description}
                                                 </TableCell>
-                                                <TableCell>{movement.paymentMethod || 'N/A'}</TableCell>
+                                                <TableCell align="right" sx={{ 
+                                                    fontSize: '0.95rem', 
+                                                    fontWeight: 'medium',
+                                                    color: movement.type === 'EGRESO' ? '#d32f2f' : '#2e7d32',
+                                                    padding: '12px 16px'
+                                                }}>
+                                                    {movement.type === 'EGRESO' ? '-' : '+'}{formatCurrency(Math.abs(movement.amount))}
+                                                </TableCell>
+                                                <TableCell sx={{ 
+                                                    fontSize: '0.9rem',
+                                                    padding: '12px 24px'
+                                                }}>
+                                                    <Chip 
+                                                        label={movement.paymentMethod || 'N/A'} 
+                                                        variant="outlined" 
+                                                        size="small"
+                                                        sx={{ fontSize: '0.75rem' }}
+                                                    />
+                                                </TableCell>
                                             </TableRow>
                                         ))
                                     )}
@@ -306,9 +381,9 @@ const MovementManager = () => {
                         onClick={handleCreateExpense}
                         variant="contained"
                         color="error"
-                        disabled={!expenseData.amount || !expenseData.description || !expenseData.paymentMethod}
+                        disabled={!expenseData.amount || !expenseData.description || !expenseData.paymentMethod || loadingExpense}
                     >
-                        Registrar Egreso
+                        {loadingExpense ? 'Registrando...' : 'Registrar Egreso'}
                     </Button>
                 </DialogActions>
             </Dialog>
