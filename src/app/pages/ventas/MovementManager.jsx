@@ -24,6 +24,7 @@ import {
     InputLabel,
     Select,
     MenuItem,
+    CircularProgress,
 } from '@mui/material';
 import {
     TrendingDown,
@@ -372,7 +373,10 @@ const MovementManager = () => {
                     </Box>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setOpenExpenseDialog(false)}>
+                    <Button 
+                        onClick={() => setOpenExpenseDialog(false)}
+                        disabled={loadingExpense}
+                    >
                         Cancelar
                     </Button>
                     <Button
@@ -380,6 +384,7 @@ const MovementManager = () => {
                         variant="contained"
                         color="error"
                         disabled={!expenseData.amount || !expenseData.description || !expenseData.paymentMethod || loadingExpense}
+                        startIcon={loadingExpense ? <CircularProgress size={20} color="inherit" /> : <TrendingDown />}
                     >
                         {loadingExpense ? 'Registrando...' : 'Registrar Egreso'}
                     </Button>

@@ -30,6 +30,7 @@ import {
     TextField,
     Switch,
     Chip,
+    CircularProgress,
 } from '@mui/material';
 import {
     Visibility,
@@ -62,6 +63,9 @@ const OrderManager = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [showDateFilter, setShowDateFilter] = useState(false);
+    const [isPaymentLoading, setIsPaymentLoading] = useState(false);
+    const [isCancelLoading, setIsCancelLoading] = useState(false);
+    const [isTicketLoading, setIsTicketLoading] = useState(false);
 
     const fetchOrders = useCallback(async (filterStartDate = null, filterEndDate = null) => {
         try {
@@ -178,32 +182,35 @@ const OrderManager = () => {
     };
 
     const handleCancelOrder = async () => {
+        setIsCancelLoading(true);
         try {
             await updateOrderStatus(selectedOrder.orderId, 'CANCELLED');
             handleCloseDetailDialog();
         } catch (error) {
             // Error ya manejado en updateOrderStatus
+        } finally {
+            setIsCancelLoading(false);
         }
     };
 
     const handlePayOrder = async () => {
+        setIsPaymentLoading(true);
         try {
             let paymentsToProcess;
             
             if (showMultiplePayments && payments.length > 0) {
-                // Para pagos múltiples, aplicar el cargo del 5% solo a los pagos POS
+                // Para pagos múltiples, usar los montos exactos sin recargo
                 paymentsToProcess = payments.map(payment => ({
                     ...payment,
-                    amount: payment.paymentMethod === 'pos' 
-                        ? Math.ceil(payment.amount * 1.05 * 10) / 10 
-                        : payment.amount
+                    amount: payment.amount
                 }));
             } else {
                 const subtotal = selectedOrder.orderDetails.reduce((total, item) => total + (Number(item.unitPrice) * Number(item.quantity)), 0);
-                const total = calculateTotalWithPOS(subtotal, paymentMethod);
+                // Para POS, guardar el monto original sin recargo (el recargo es solo visual)
+                const amountToSave = paymentMethod === 'pos' ? subtotal : calculateTotalWithPOS(subtotal, paymentMethod);
                 paymentsToProcess = [{
                     paymentMethod: paymentMethod,
-                    amount: total
+                    amount: amountToSave
                 }];
             }
             
@@ -220,6 +227,9 @@ const OrderManager = () => {
                 throw new Error('Error al procesar pagos');
             }
             
+            // Actualizar el estado de la orden a PAID para liberar las mesas
+            await updateOrderStatus(selectedOrder.orderId, 'PAID');
+            
             // Generar ticket automáticamente al marcar como pagado
             const orderWithPayment = {
                 ...selectedOrder,
@@ -233,10 +243,13 @@ const OrderManager = () => {
             handleCloseDetailDialog();
         } catch (error) {
             showSnackbar('Error al procesar el pago: ' + error.message, 'error');
+        } finally {
+            setIsPaymentLoading(false);
         }
     };
 
     const handleGenerateTicket = async () => {
+        setIsTicketLoading(true);
         try {
             const order = selectedOrder;
             if (!order) {
@@ -274,6 +287,8 @@ const OrderManager = () => {
         } catch (error) {
             console.error('Error al imprimir ticket:', error);
             showSnackbar('Error al imprimir ticket: ' + error.message, 'error');
+        } finally {
+            setIsTicketLoading(false);
         }
     };
 
@@ -455,7 +470,7 @@ const OrderManager = () => {
             ticket += 'METODOS DE PAGO:\n';
             ticket += commands.BOLD_OFF;
             order.payments.forEach(payment => {
-                ticket += `${getPaymentMethodText(payment.paymentMethod)}: S/.${payment.amount.toFixed(2)}\n`;
+                ticket += `${getPaymentMethodText(payment.paymentMethod)}: S/.${Number(payment.amount).toFixed(2)}\n`;
             });
         } else {
             ticket += `METODO DE PAGO: ${getPaymentMethodText(order.paymentMethod).toUpperCase()}\n`;
@@ -988,16 +1003,64 @@ const OrderManager = () => {
                                 )}
                             </Paper>
 
-                            {/* Sección de Métodos de Pago y Ticket */}
-                            <Paper 
-                                elevation={0}
-                                sx={{ 
-                                    mt: 3, 
-                                    p: 3, 
-                                    borderRadius: '12px',
-                                    border: '1px solid #e9ecef'
-                                }}
-                            >
+                            {/* Mostrar métodos de pago utilizados si la orden ya está pagada */}
+                            {selectedOrder?.status === 'PAID' && selectedOrder?.payments && selectedOrder.payments.length > 0 && (
+                                <Paper 
+                                    elevation={0}
+                                    sx={{ 
+                                        mt: 3, 
+                                        p: 3, 
+                                        borderRadius: '12px',
+                                        border: '1px solid #e9ecef',
+                                        background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)'
+                                    }}
+                                >
+                                    <Typography variant="h6" sx={{ fontWeight: 600, color: '#495057', mb: 2 }}>
+                                        Métodos de Pago Utilizados
+                                    </Typography>
+                                    <Box display="flex" flexWrap="wrap" gap={1}>
+                                        {selectedOrder.payments.map((payment, index) => (
+                                            <Chip
+                                                key={index}
+                                                label={`${getPaymentMethodText(payment.paymentMethod)}: S/ ${Number(payment.amount).toFixed(2)}`}
+                                                sx={{ 
+                                                    backgroundColor: payment.paymentMethod === 'efectivo' ? '#28a745' : 
+                                                                    payment.paymentMethod === 'yape' ? '#6f42c1' : '#007bff',
+                                                    color: 'white',
+                                                    fontWeight: 600,
+                                                    '& .MuiChip-label': {
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: 0.5
+                                                    }
+                                                }}
+                                                icon={
+                                                    payment.paymentMethod === 'efectivo' ? <AttachMoney sx={{ color: 'white !important' }} /> :
+                                                    payment.paymentMethod === 'yape' ? <Payment sx={{ color: 'white !important' }} /> :
+                                                    <CreditCard sx={{ color: 'white !important' }} />
+                                                }
+                                            />
+                                        ))}
+                                    </Box>
+                                    {selectedOrder.payments.length > 1 && (
+                                        <Typography variant="body2" sx={{ mt: 2, fontStyle: 'italic', color: '#6c757d' }}>
+                                            Total pagado: S/ {selectedOrder.payments.reduce((sum, p) => sum + parseFloat(p.amount), 0).toFixed(2)}
+                                        </Typography>
+                                    )}
+                                </Paper>
+                            )}
+
+                            {/* Sección de Métodos de Pago y Ticket - Solo mostrar si no está cancelado y no está pagado */}
+                            {selectedOrder?.status !== 'CANCELLED' && selectedOrder?.status !== 'PAID' && (
+                                <Paper 
+                                    elevation={0}
+                                    sx={{ 
+                                        mt: 3, 
+                                        p: 3, 
+                                        borderRadius: '12px',
+                                        border: '1px solid #e9ecef'
+                                    }}
+                                >
                                 <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                                     <Typography variant="h6" sx={{ fontWeight: 600, color: '#495057' }}>
                                         Métodos de Pago y Ticket
@@ -1064,9 +1127,10 @@ const OrderManager = () => {
                                                     Generar ticket de la orden con el método de pago seleccionado
                                                 </Typography>
                                                 <Button
-                                                    onClick={handleGenerateTicket}
-                                                    variant="contained"
-                                                    startIcon={<Print />}
+                                    onClick={handleGenerateTicket}
+                                    variant="contained"
+                                    disabled={isPaymentLoading || isCancelLoading || isTicketLoading}
+                                    startIcon={isTicketLoading ? <CircularProgress size={20} color="inherit" /> : <Print />}
                                                     sx={{ 
                                                         minWidth: 180,
                                                         py: 1.5,
@@ -1145,7 +1209,7 @@ const OrderManager = () => {
                                                 {payments.map((payment, index) => (
                                                     <Chip
                                                         key={index}
-                                                        label={`${getPaymentMethodText(payment.paymentMethod)}: S/ ${payment.amount.toFixed(2)}`}
+                                                        label={`${getPaymentMethodText(payment.paymentMethod)}: S/ ${Number(payment.amount).toFixed(2)}`}
                                                         onDelete={() => removePayment(index)}
                                                         deleteIcon={<Delete />}
                                                         sx={{ mr: 1, mb: 1 }}
@@ -1157,7 +1221,48 @@ const OrderManager = () => {
                                         )}
                                     </Box>
                                 )}
-                            </Paper>
+                                </Paper>
+                            )}
+
+                            {/* Botón de generar ticket para órdenes pagadas */}
+                            {selectedOrder?.status === 'PAID' && (
+                                <Paper 
+                                    elevation={0}
+                                    sx={{ 
+                                        mt: 3, 
+                                        p: 3, 
+                                        borderRadius: '12px',
+                                        border: '1px solid #e9ecef',
+                                        background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+                                        textAlign: 'center'
+                                    }}
+                                >
+                                    <Typography variant="h6" sx={{ fontWeight: 600, color: '#495057', mb: 2 }}>
+                                        Ticket de la Orden
+                                    </Typography>
+                                    <Button
+                                        onClick={handleGenerateTicket}
+                                        variant="contained"
+                                        startIcon={isTicketLoading ? <CircularProgress size={20} color="inherit" /> : <Receipt />}
+                                        disabled={isTicketLoading}
+                                        sx={{ 
+                                            minWidth: 180,
+                                            py: 1.5,
+                                            borderRadius: '10px',
+                                            background: 'linear-gradient(135deg, #28a745 0%, #20c997 100%)',
+                                            boxShadow: '0 4px 12px rgba(40, 167, 69, 0.3)',
+                                            '&:hover': {
+                                                background: 'linear-gradient(135deg, #218838 0%, #1ea085 100%)',
+                                                boxShadow: '0 6px 16px rgba(40, 167, 69, 0.4)',
+                                                transform: 'translateY(-2px)'
+                                            },
+                                            transition: 'all 0.3s ease'
+                                        }}
+                                    >
+                                        {isTicketLoading ? 'Generando...' : 'Generar Ticket'}
+                                    </Button>
+                                </Paper>
+                            )}
                         </Box>
                     )}
 
@@ -1174,8 +1279,8 @@ const OrderManager = () => {
                         <Button
                             onClick={handleCancelOrder}
                             variant="contained"
-                            disabled={selectedOrder?.status === 'CANCELLED' || selectedOrder?.status === 'PAID'}
-                            startIcon={<Close />}
+                            disabled={isPaymentLoading || isCancelLoading || isTicketLoading || selectedOrder?.status === 'CANCELLED' || selectedOrder?.status === 'PAID'}
+                            startIcon={isCancelLoading ? <CircularProgress size={20} color="inherit" /> : <Close />}
                             sx={{ 
                                 minWidth: 140,
                                 py: 1.5,
@@ -1198,11 +1303,12 @@ const OrderManager = () => {
                             onClick={handlePayOrder}
                             variant="contained"
                             disabled={
+                                isPaymentLoading || isCancelLoading || isTicketLoading ||
                                 selectedOrder?.status === 'CANCELLED' || 
                                 selectedOrder?.status === 'PAID' ||
                                 (showMultiplePayments && (payments.length === 0 || remainingAmount > 0))
                             }
-                            startIcon={<AttachMoney />}
+                            startIcon={isPaymentLoading ? <CircularProgress size={20} color="inherit" /> : <AttachMoney />}
                             sx={{ 
                                 minWidth: 140,
                                 py: 1.5,

@@ -35,6 +35,7 @@ const API_URL = 'http://localhost:4000/api/cash-movements';
 const OpeningManager = () => {
     const [cashRegister, setCashRegister] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [operationLoading, setOperationLoading] = useState(false);
     const [openDialog, setOpenDialog] = useState(false);
     const [dialogType, setDialogType] = useState(''); // 'open' or 'close'
     const [formData, setFormData] = useState({
@@ -116,6 +117,7 @@ const OpeningManager = () => {
 
     const handleOpenCashRegister = async () => {
         try {
+            setOperationLoading(true);
             const response = await fetch(`${API_URL}/open-register`, {
                 method: 'POST',
                 headers: {
@@ -149,11 +151,14 @@ const OpeningManager = () => {
                 message: 'Error al abrir la caja',
                 severity: 'error'
             });
+        } finally {
+            setOperationLoading(false);
         }
     };
 
     const handleCloseCashRegister = async () => {
         try {
+            setOperationLoading(true);
             const response = await fetch(`${API_URL}/close-register`, {
                 method: 'POST',
                 headers: {
@@ -190,6 +195,8 @@ const OpeningManager = () => {
                 message: 'Error al cerrar la caja',
                 severity: 'error'
             });
+        } finally {
+            setOperationLoading(false);
         }
     };
 
@@ -454,7 +461,7 @@ const OpeningManager = () => {
                                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2, pt: 1, borderTop: 1, borderColor: 'divider' }}>
                                             <Typography variant="body1" sx={{ fontWeight: 'bold' }}>Balance Esperado:</Typography>
                                             <Typography variant="body1" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-                                                {formatCurrency(cashRegister.openingBalance + (dailySummary.totalIncome || 0) - (dailySummary.totalExpenses || 0))}
+                                                {formatCurrency(Number(cashRegister.openingBalance) + (dailySummary.totalIncome || 0) - (dailySummary.totalExpenses || 0))}
                                             </Typography>
                                         </Box>
                                         {formData.closingBalance && (
@@ -464,10 +471,10 @@ const OpeningManager = () => {
                                                     variant="body1" 
                                                     sx={{ 
                                                         fontWeight: 'bold',
-                                                        color: (parseFloat(formData.closingBalance) - (cashRegister.openingBalance + (dailySummary.totalIncome || 0) - (dailySummary.totalExpenses || 0))) >= 0 ? 'success.main' : 'error.main'
+                                                        color: (parseFloat(formData.closingBalance) - (Number(cashRegister.openingBalance) + (dailySummary.totalIncome || 0) - (dailySummary.totalExpenses || 0))) >= 0 ? 'success.main' : 'error.main'
                                                     }}
                                                 >
-                                                    {formatCurrency(parseFloat(formData.closingBalance || 0) - (cashRegister.openingBalance + (dailySummary.totalIncome || 0) - (dailySummary.totalExpenses || 0)))}
+                                                    {formatCurrency(parseFloat(formData.closingBalance || 0) - (Number(cashRegister.openingBalance) + (dailySummary.totalIncome || 0) - (dailySummary.totalExpenses || 0)))}
                                                 </Typography>
                                             </Box>
                                         )}
@@ -497,7 +504,10 @@ const OpeningManager = () => {
                     </Box>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={handleCloseDialog}>
+                    <Button 
+                        onClick={handleCloseDialog}
+                        disabled={operationLoading}
+                    >
                         Cancelar
                     </Button>
                     <Button
@@ -505,12 +515,16 @@ const OpeningManager = () => {
                         variant="contained"
                         color={dialogType === 'open' ? 'success' : 'error'}
                         disabled={
-                            dialogType === 'open' 
+                            operationLoading ||
+                            (dialogType === 'open' 
                                 ? !formData.openingBalance 
-                                : !formData.closingBalance
+                                : !formData.closingBalance)
                         }
                     >
-                        {dialogType === 'open' ? 'Abrir Caja' : 'Cerrar Caja'}
+                        {operationLoading 
+                            ? (dialogType === 'open' ? 'Abriendo...' : 'Cerrando...')
+                            : (dialogType === 'open' ? 'Abrir Caja' : 'Cerrar Caja')
+                        }
                     </Button>
                 </DialogActions>
             </Dialog>
@@ -526,11 +540,13 @@ const OpeningManager = () => {
                             <Table>
                                 <TableHead>
                                     <TableRow>
-                                        <TableCell>Fecha de Apertura</TableCell>
-                                        <TableCell>Fecha de Cierre</TableCell>
-                                        <TableCell>Balance Inicial</TableCell>
-                                        <TableCell>Balance Final</TableCell>
-                                        <TableCell>Diferencia</TableCell>
+                                        <TableCell>Apertura</TableCell>
+                                        <TableCell>Cierre</TableCell>
+                                        <TableCell>Inicial</TableCell>
+                                        <TableCell>Esperado</TableCell>
+                                        <TableCell>Real</TableCell>
+                                        <TableCell>Ganancia</TableCell>
+                                        <TableCell>Sobrante/Faltante</TableCell>
                                         <TableCell>Estado</TableCell>
                                     </TableRow>
                                 </TableHead>
@@ -558,6 +574,7 @@ const OpeningManager = () => {
                                                     }) : '-'}
                                                 </TableCell>
                                                 <TableCell>{formatCurrency(register.openingBalance)}</TableCell>
+                                                <TableCell>{formatCurrency(register.expectedBalance || 0)}</TableCell>
                                                 <TableCell>{formatCurrency(register.closingBalance)}</TableCell>
                                                 <TableCell>
                                                     <Typography
@@ -565,6 +582,14 @@ const OpeningManager = () => {
                                                         fontWeight="bold"
                                                     >
                                                         {formatCurrency(difference)}
+                                                    </Typography>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Typography
+                                                        color={(difference - ((register.expectedBalance || 0) - register.openingBalance)) >= 0 ? 'success.main' : 'error.main'}
+                                                        fontWeight="bold"
+                                                    >
+                                                        {formatCurrency(difference - ((register.expectedBalance || 0) - register.openingBalance))}
                                                     </Typography>
                                                 </TableCell>
                                                 <TableCell>
