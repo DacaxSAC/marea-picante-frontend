@@ -528,7 +528,6 @@ const OrderManager = () => {
         setPayments(updatedPayments);
         setCurrentPaymentAmount('');
         
-        const totalPaid = updatedPayments.reduce((sum, p) => sum + p.amount, 0);
         setRemainingAmount(getRemainingAmount() - amount);
     };
 

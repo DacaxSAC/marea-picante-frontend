@@ -43,7 +43,6 @@ const OpeningManager = () => {
         closingBalance: '',
         notes: ''
     });
-    const [closeResult, setCloseResult] = useState(null);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
     const [dailySummary, setDailySummary] = useState(null);
     const [cashRegisterHistory, setCashRegisterHistory] = useState([]);
@@ -173,9 +172,6 @@ const OpeningManager = () => {
             if (!response.ok) {
                 throw new Error('Error al cerrar la caja');
             }
-
-            const result = await response.json();
-            setCloseResult(result);
 
             setSnackbar({
                 open: true,
