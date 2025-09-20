@@ -32,7 +32,7 @@ import {
     Refresh,
 } from '@mui/icons-material';
 
-const API_URL = 'http://localhost:4000/api/cash-movements';
+const API_URL = 'https://marea-picante-prod-server.onrender.com/api/cash-movements';
 
 const MovementManager = () => {
     const [movements, setMovements] = useState([]);

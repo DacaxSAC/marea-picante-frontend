@@ -18,7 +18,7 @@ import {
 } from '@mui/material';
 import { Edit, Delete, Add } from '@mui/icons-material';
 
-const API_URL = 'http://localhost:4000/api/categories';
+const API_URL = 'https://marea-picante-prod-server.onrender.com/api/categories';
 
 const CategoryManager = () => {
   const [categories, setCategories] = useState([]);
