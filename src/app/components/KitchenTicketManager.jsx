@@ -60,19 +60,62 @@ const KitchenTicketManager = () => {
                 setSnackbar({ open: true, message: 'Desconectado del sistema de notificaciones', severity: 'warning' });
             });
 
-            newSocket.on('new-order', (data) => {
+            const handleNewOrder = async (data) => {
                 console.log('🍽️ Nueva orden recibida:', data);
+                const orderId = data?.orderId || data?.orderData?.orderId || data?.orderData?.id;
+                let order = data.orderData;
+                const hasDetails = order && ((order.orderDetails && order.orderDetails.length > 0) || (order.items && order.items.length > 0));
+                const hasTables = order && order.tables && order.tables.length > 0;
+                if (!order || !hasDetails || !hasTables) {
+                    try {
+                        const res = await fetch(`http://localhost:4000/api/orders/${orderId}`);
+                        if (res.ok) {
+                            order = await res.json();
+                        }
+                    } catch (e) {
+                        // ignorar errores de red
+                    }
+                }
+
                 const newNotification = {
                     id: Date.now(),
-                    order: data.orderData,
+                    order: order,
                     timestamp: new Date(),
                     printed: false
                 };
                 setNotifications(prev => [newNotification, ...prev]);
-                setSnackbar({ open: true, message: `Nueva orden #${data.orderData.orderId} recibida`, severity: 'info' });
+                setSnackbar({ open: true, message: `Nueva orden #${(order && (order.orderId || order.id)) || orderId} recibida`, severity: 'info' });
+            };
 
-                // Sin auto-impresión local. El AutoPrintDaemon maneja la impresión global.
-            });
+            newSocket.on('new-order', handleNewOrder);
+
+            // Manejar productos agregados a orden existente
+            const handleOrderItemsAdded = async (data) => {
+                console.log('➕ Ítems agregados a orden:', data);
+                const orderId = data?.orderId || data?.orderData?.orderId || data?.orderData?.id;
+                let order = data.orderData;
+                const hasTables = order && order.tables && order.tables.length > 0;
+                if (!order || !hasTables) {
+                    try {
+                        const res = await fetch(`http://localhost:4000/api/orders/${orderId}`);
+                        if (res.ok) {
+                            order = await res.json();
+                        }
+                    } catch (e) {}
+                }
+                const addedItems = Array.isArray(data.addedItems) ? data.addedItems : [data.addedItems];
+                const orderForTicket = { ...order, items: addedItems, orderDetails: addedItems };
+                const newNotification = {
+                    id: Date.now(),
+                    order: orderForTicket,
+                    timestamp: new Date(),
+                    printed: false
+                };
+                setNotifications(prev => [newNotification, ...prev]);
+                setSnackbar({ open: true, message: `Productos agregados a orden #${(order && (order.orderId || order.id)) || orderId}` , severity: 'info' });
+            };
+
+            newSocket.on('order-items-added', handleOrderItemsAdded);
 
             newSocket.on('connect_error', (error) => {
                 console.error('❌ Error de conexión:', error);
@@ -96,35 +139,56 @@ const KitchenTicketManager = () => {
     // Generar ticket de cocina basado en el formato del mobile
     const generateKitchenTicket = (order) => {
         const esc = String.fromCharCode(27);
-        const init = esc + '@';
-        const alignCenter = esc + 'a' + String.fromCharCode(1);
-        const alignLeft = esc + 'a' + String.fromCharCode(0);
-        const cut = esc + 'm';
+        const gs = String.fromCharCode(29);
+        const INIT = esc + '@';
+        const ALIGN_LEFT = esc + 'a' + String.fromCharCode(0);
+        const ALIGN_CENTER = esc + 'a' + String.fromCharCode(1);
+        const BOLD_ON = esc + 'E' + String.fromCharCode(1);
+        const BOLD_OFF = esc + 'E' + String.fromCharCode(0);
+        const NORMAL_SIZE = esc + '!' + String.fromCharCode(0);
+        const DOUBLE_HEIGHT = esc + '!' + String.fromCharCode(16);
+        const DOUBLE_SIZE = esc + '!' + String.fromCharCode(48);
+        const MEGA_SIZE = esc + '!' + String.fromCharCode(63);
+        const CUT = gs + 'V' + String.fromCharCode(0);
 
-        let ticket = init;
-        ticket += alignCenter;
-        ticket += '================================\n';
-        ticket += '            COCINA\n';
-        ticket += '================================\n\n';
-        ticket += alignLeft;
-        
+        let ticket = '';
+        ticket += INIT;
+        ticket += '\n\n';
+
+        // Título COCINA
+        ticket += BOLD_ON + DOUBLE_HEIGHT;
+        ticket += ALIGN_CENTER + 'COCINA\n';
+        ticket += BOLD_OFF + NORMAL_SIZE;
+        ticket += '\n';
+
         // Mostrar mesas o "PARA LLEVAR" según el tipo
         if (order.isDelivery) {
-            ticket += '        PARA LLEVAR\n\n';
-            if (order.customerName) {
-                ticket += `CLIENTE: ${order.customerName}\n\n`;
-            }
+            ticket += BOLD_ON + MEGA_SIZE;
+            ticket += ALIGN_CENTER + 'PARA LLEVAR\n';
+            ticket += BOLD_OFF + NORMAL_SIZE;
         } else if (order.tables && order.tables.length > 0) {
             const tableLabel = order.tables.length === 1 ? 'MESA:' : 'MESAS:';
             const tableNumbers = order.tables.map(t => t.number || t).sort((a,b) => a - b).join(', ');
-            ticket += `${tableLabel} ${tableNumbers}\n\n`;
+            ticket += BOLD_ON + DOUBLE_HEIGHT;
+            ticket += ALIGN_CENTER + `${tableLabel} ${tableNumbers}\n`;
+            ticket += BOLD_OFF + NORMAL_SIZE;
         }
-        
-        // Separador
-        ticket += '================================\n';
-        ticket += 'PRODUCTOS:\n\n';
-        
-        // Lista de productos
+
+        // Si es delivery, mostrar nombre del cliente
+        ticket += '\n';
+        if (order.isDelivery && order.customerName) {
+            ticket += BOLD_ON + DOUBLE_HEIGHT;
+            ticket += ALIGN_CENTER + `CLIENTE: ${order.customerName}\n`;
+            ticket += BOLD_OFF + NORMAL_SIZE;
+        }
+
+        ticket += '\n\n';
+        ticket += ALIGN_CENTER + '================================\n';
+        ticket += '\n';
+
+        // Lista de productos con mejor formato
+        ticket += ALIGN_LEFT + BOLD_ON + 'PRODUCTOS:\n' + BOLD_OFF;
+        ticket += '\n';
         const items = order.items || order.orderDetails || [];
         items.forEach(item => {
             let productName = item.name || (item.product && item.product.name) || 'Producto sin nombre';
@@ -145,23 +209,27 @@ const KitchenTicketManager = () => {
                 productName = 'F. ' + productName;
             }
             
-            // Productos con cantidad
+            // Productos con letra grande y espaciado
+            ticket += BOLD_ON + DOUBLE_HEIGHT;
             ticket += `${item.quantity}  ${productName}\n`;
+            ticket += BOLD_OFF + NORMAL_SIZE;
             
             // Mostrar comentario si existe
             if (item.comment && item.comment.trim() !== '') {
+                ticket += BOLD_ON;
                 ticket += `   >> ${item.comment}\n`;
+                ticket += BOLD_OFF;
             }
             
             ticket += '\n';
         });
         
         // Separador final
-        ticket += '================================\n';
-        ticket += `Orden #: ${order.orderId}\n`;
-        ticket += `Fecha: ${new Date(order.timestamp || order.createdAt).toLocaleString('es-PE')}\n`;
-        ticket += '================================\n\n';
-        ticket += cut;
+        ticket += ALIGN_CENTER + '================================\n';
+        
+        // Espacios en blanco abajo y corte
+        ticket += '\n\n\n';
+        ticket += CUT;
         
         return ticket;
     };
@@ -247,7 +315,7 @@ const KitchenTicketManager = () => {
                             </Typography>
                         </Box>
                         
-                        <Box display="flex" alignItems="center" gap={2}>
+                    <Box display="flex" alignItems="center" gap={2}>
                             <Chip 
                                 icon={isConnected ? <Notifications /> : <NotificationsOff />}
                                 label={isConnected ? 'Conectado' : 'Desconectado'}
@@ -287,6 +355,52 @@ const KitchenTicketManager = () => {
                                 disabled={isConnectingBT}
                             >
                                 {isConnectingBT ? 'Conectando...' : (isBluetoothConnected ? 'Cambiar impresora' : 'Conectar Impresora')}
+                            </Button>
+
+                            <Button
+                                variant="contained"
+                                color="primary"
+                                onClick={async () => {
+                                    // Simular evento de nueva orden con datos completos
+                                    const mockData = {
+                                        orderId: 12345,
+                                        orderData: {
+                                            orderId: 12345,
+                                            isDelivery: false,
+                                            customerName: null,
+                                            tables: [{ number: 7 }, { number: 8 }],
+                                            orderDetails: [
+                                                { quantity: 2, product: { name: 'Ceviche Mixto' }, comment: 'poco picante' },
+                                                { quantity: 1, product: { name: 'Lomo Saltado' }, comment: '' },
+                                            ],
+                                        },
+                                        timestamp: new Date(),
+                                        message: 'Nueva orden recibida (simulada)'
+                                    };
+                                    // Reutilizar la lógica de manejo
+                                    const orderId = mockData.orderId;
+                                    let order = mockData.orderData;
+                                    const hasDetails = order && ((order.orderDetails && order.orderDetails.length > 0) || (order.items && order.items.length > 0));
+                                    const hasTables = order && order.tables && order.tables.length > 0;
+                                    if (!order || !hasDetails || !hasTables) {
+                                        try {
+                                            const res = await fetch(`http://localhost:4000/api/orders/${orderId}`);
+                                            if (res.ok) {
+                                                order = await res.json();
+                                            }
+                                        } catch (e) {}
+                                    }
+                                    const newNotification = {
+                                        id: Date.now(),
+                                        order: order,
+                                        timestamp: new Date(),
+                                        printed: false
+                                    };
+                                    setNotifications(prev => [newNotification, ...prev]);
+                                    setSnackbar({ open: true, message: `Nueva orden #${(order && (order.orderId || order.id)) || orderId} recibida (simulada)`, severity: 'info' });
+                                }}
+                            >
+                                Simular Orden
                             </Button>
                             
                             <Button
