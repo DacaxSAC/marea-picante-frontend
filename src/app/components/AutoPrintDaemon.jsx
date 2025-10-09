@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { useBluetoothPrinter } from '../contexts/BluetoothPrinterContext';
 
@@ -13,7 +13,6 @@ const generateKitchenTicket = (order) => {
   const BOLD_OFF = esc + 'E' + String.fromCharCode(0);
   const NORMAL_SIZE = esc + '!' + String.fromCharCode(0);
   const DOUBLE_HEIGHT = esc + '!' + String.fromCharCode(16);
-  const DOUBLE_SIZE = esc + '!' + String.fromCharCode(48);
   const MEGA_SIZE = esc + '!' + String.fromCharCode(63);
   const CUT = gs + 'V' + String.fromCharCode(0);
 
@@ -85,8 +84,19 @@ const generateKitchenTicket = (order) => {
 
 const AutoPrintDaemon = () => {
   const { isConnected, autoPrintEnabled, printText } = useBluetoothPrinter();
+  const socketRef = useRef(null);
+  const isConnectedRef = useRef(isConnected);
+  const autoPrintEnabledRef = useRef(autoPrintEnabled);
+  const printTextRef = useRef(printText);
 
-  const printTicketBrowserAuto = (order) => {
+  // Mantener refs sincronizadas para leer valores actuales dentro de los handlers
+  useEffect(() => {
+    isConnectedRef.current = isConnected;
+    autoPrintEnabledRef.current = autoPrintEnabled;
+    printTextRef.current = printText;
+  }, [isConnected, autoPrintEnabled, printText]);
+
+  const printTicketBrowserAuto = useCallback((order) => {
     const ticket = generateKitchenTicket(order);
     try {
       const printWindow = window.open('', '_blank');
@@ -112,9 +122,9 @@ const AutoPrintDaemon = () => {
     } catch (err) {
       console.warn('Fallo en impresión de navegador automática:', err);
     }
-  };
+  }, []);
 
-  const ensureFullOrder = async (payload) => {
+  const ensureFullOrder = useCallback(async (payload) => {
     const orderId = payload?.orderId || payload?.orderData?.orderId || payload?.orderData?.id;
     let order = payload?.orderData;
     const hasDetails = order && ((order.orderDetails && order.orderDetails.length > 0) || (order.items && order.items.length > 0));
@@ -130,25 +140,26 @@ const AutoPrintDaemon = () => {
       }
     }
     return order || payload?.orderData;
-  };
+  }, []);
 
   useEffect(() => {
             const socket = io(process.env.REACT_APP_BACKEND_URL, {
       transports: ['websocket'],
       autoConnect: true,
     });
+    socketRef.current = socket;
     socket.on('connect', () => {
       // console.log('AutoPrintDaemon conectado a WS');
       // Unirse a la sala del restaurante (ID 1 por defecto)
       socket.emit('join-restaurant', 1);
     });
     socket.on('new-order', async (data) => {
-      if (!autoPrintEnabled) return;
+      if (!autoPrintEnabledRef.current) return;
       try {
         const order = await ensureFullOrder(data);
-        if (isConnected) {
+        if (isConnectedRef.current) {
           const ticket = generateKitchenTicket(order);
-          await printText(ticket);
+          await printTextRef.current(ticket);
         } else {
           // Fallback a impresión del navegador si no hay BT conectada
           printTicketBrowserAuto(order);
@@ -159,14 +170,14 @@ const AutoPrintDaemon = () => {
     });
     // Escuchar items agregados a orden existente y generar ticket sólo de esos productos
     socket.on('order-items-added', async (data) => {
-      if (!autoPrintEnabled) return;
+      if (!autoPrintEnabledRef.current) return;
       try {
         const fullOrder = await ensureFullOrder(data);
         const addedItems = Array.isArray(data.addedItems) ? data.addedItems : [data.addedItems];
         const orderForTicket = { ...fullOrder, items: addedItems, orderDetails: addedItems };
-        if (isConnected) {
+        if (isConnectedRef.current) {
           const ticket = generateKitchenTicket(orderForTicket);
-          await printText(ticket);
+          await printTextRef.current(ticket);
         } else {
           printTicketBrowserAuto(orderForTicket);
         }
@@ -175,9 +186,12 @@ const AutoPrintDaemon = () => {
       }
     });
     return () => {
-      socket.disconnect();
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
     };
-  }, [isConnected, autoPrintEnabled, printText]);
+  }, [ensureFullOrder, printTicketBrowserAuto]);
 
   return null;
 };
