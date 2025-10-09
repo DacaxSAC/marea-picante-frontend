@@ -147,7 +147,6 @@ const KitchenTicketManager = () => {
         const BOLD_OFF = esc + 'E' + String.fromCharCode(0);
         const NORMAL_SIZE = esc + '!' + String.fromCharCode(0);
         const DOUBLE_HEIGHT = esc + '!' + String.fromCharCode(16);
-        const DOUBLE_SIZE = esc + '!' + String.fromCharCode(48);
         const MEGA_SIZE = esc + '!' + String.fromCharCode(63);
         const CUT = gs + 'V' + String.fromCharCode(0);
 
