@@ -4,6 +4,8 @@ import CssBaseline from "@mui/material/CssBaseline";
 import { MatxTheme } from "./components";
 // ALL CONTEXTS
 import { AuthProvider } from "./contexts/JWTAuthContext";
+import { BluetoothPrinterProvider } from "./contexts/BluetoothPrinterContext";
+import AutoPrintDaemon from "./components/AutoPrintDaemon";
 import SettingsProvider from "./contexts/SettingsContext";
 // ROUTES
 import routes from "./routes";
@@ -16,10 +18,13 @@ export default function App() {
   return (
     <SettingsProvider>
       <AuthProvider>
-        <MatxTheme>
-          <CssBaseline />
-          {content}
-        </MatxTheme>
+        <BluetoothPrinterProvider>
+          <MatxTheme>
+            <CssBaseline />
+            <AutoPrintDaemon />
+            {content}
+          </MatxTheme>
+        </BluetoothPrinterProvider>
       </AuthProvider>
     </SettingsProvider>
   );

@@ -18,6 +18,13 @@ export const navigations = [
       { name: "Movimientos", iconText: "SU", path: "/ventas/movimientos" },
     ]
   },
+  {
+    name: "Cocina",
+    icon: "restaurant",
+    children: [
+      { name: "Tickets de Cocina", iconText: "TC", path: "/cocina/tickets" },
+    ]
+  },
   // { label: "PAGES", type: "label" },
   // {
   //   name: "Session/Auth",

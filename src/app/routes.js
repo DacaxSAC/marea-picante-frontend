@@ -14,6 +14,7 @@ import TableManager from "./pages/mantenedores/TableManager";
 import OrderManager from "./pages/ventas/OrderManager";
 import OpeningManager from "./pages/ventas/OpeningManager";
 import MovementManager from "./pages/ventas/MovementManager";
+import KitchenTicketManager from "./components/KitchenTicketManager";
 
 // SESSION PAGES
 const NotFound = Loadable(lazy(() => import("./views/sessions/NotFound")));
@@ -47,7 +48,8 @@ const routes = [
 
       { path: "/ventas/ordenes", element: <OrderManager />, auth: authRoles.admin },
       { path: "/ventas/apertura-cierre", element: <OpeningManager />, auth: authRoles.admin },
-      { path: "/ventas/movimientos", element: <MovementManager />, auth: authRoles.admin }, 
+      { path: "/ventas/movimientos", element: <MovementManager />, auth: authRoles.admin },
+      { path: "/cocina/tickets", element: <KitchenTicketManager />, auth: authRoles.admin }, 
     ]
   },
 
