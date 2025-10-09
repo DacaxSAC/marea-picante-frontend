@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Box,
     Card,
@@ -30,7 +30,7 @@ import { io } from 'socket.io-client';
 import { useBluetoothPrinter } from '../contexts/BluetoothPrinterContext';
 
 const KitchenTicketManager = () => {
-    const [socket, setSocket] = useState(null);
+    const socketRef = useRef(null);
     const [isConnected, setIsConnected] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [isListening, setIsListening] = useState(true);
@@ -122,15 +122,15 @@ const KitchenTicketManager = () => {
                 setSnackbar({ open: true, message: 'Error de conexión al servidor', severity: 'error' });
             });
 
-            setSocket(newSocket);
+            socketRef.current = newSocket;
 
             return () => {
                 newSocket.disconnect();
             };
         } else {
-            if (socket) {
-                socket.disconnect();
-                setSocket(null);
+            if (socketRef.current) {
+                socketRef.current.disconnect();
+                socketRef.current = null;
                 setIsConnected(false);
             }
         }
