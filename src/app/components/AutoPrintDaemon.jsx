@@ -121,7 +121,7 @@ const AutoPrintDaemon = () => {
     const hasTables = order && order.tables && order.tables.length > 0;
     if (!order || !hasDetails || !hasTables) {
       try {
-        const res = await fetch(`http://localhost:4000/api/orders/${orderId}`);
+                const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/orders/${orderId}`);
         if (res.ok) {
           order = await res.json();
         }
@@ -133,7 +133,7 @@ const AutoPrintDaemon = () => {
   };
 
   useEffect(() => {
-    const socket = io('http://localhost:4000', {
+            const socket = io(process.env.REACT_APP_BACKEND_URL, {
       transports: ['websocket'],
       autoConnect: true,
     });

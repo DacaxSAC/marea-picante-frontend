@@ -22,8 +22,8 @@ import {
 } from '@mui/material';
 import { Edit, Delete, Add } from '@mui/icons-material';
 
-const API_URL = 'http://localhost:4000/api/products';
-const CATEGORIES_URL = 'http://localhost:4000/api/categories';
+const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api/products`;
+const CATEGORIES_URL = `${process.env.REACT_APP_BACKEND_URL}/api/categories`;
 
 const ProductManager = () => {
   const [products, setProducts] = useState([]);

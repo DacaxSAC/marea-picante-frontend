@@ -24,7 +24,7 @@ import {
 } from '@mui/material';
 import { Edit, Delete, Add, Restaurant } from '@mui/icons-material';
 
-const API_URL = 'http://localhost:4000/api/tables';
+const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api/tables`;
 
 const TableManager = () => {
   const [tables, setTables] = useState([]);

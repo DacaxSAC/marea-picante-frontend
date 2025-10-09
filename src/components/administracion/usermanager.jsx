@@ -25,7 +25,7 @@ import {
 } from '@mui/material';
 import { Edit, Delete, Add, Visibility, VisibilityOff } from '@mui/icons-material';
 
-const API_URL = 'http://localhost:4000/api/users';
+const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api/users`;
 
 const UserManager = () => {
   const [users, setUsers] = useState([]);

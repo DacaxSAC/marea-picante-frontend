@@ -18,7 +18,7 @@ import {
 } from '@mui/material';
 import { Edit, Delete, Add } from '@mui/icons-material';
 
-const API_URL = 'http://localhost:4000/api/categories';
+const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api/categories`;
 
 const CategoryManager = () => {
   const [categories, setCategories] = useState([]);

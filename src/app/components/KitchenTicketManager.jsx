@@ -40,7 +40,7 @@ const KitchenTicketManager = () => {
     // Conectar al WebSocket
     useEffect(() => {
         if (isListening) {
-            const newSocket = io('http://localhost:4000', {
+            const newSocket = io(process.env.REACT_APP_BACKEND_URL, {
                 transports: ['websocket'],
                 autoConnect: true,
             });
@@ -68,7 +68,7 @@ const KitchenTicketManager = () => {
                 const hasTables = order && order.tables && order.tables.length > 0;
                 if (!order || !hasDetails || !hasTables) {
                     try {
-                        const res = await fetch(`http://localhost:4000/api/orders/${orderId}`);
+                    const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/orders/${orderId}`);
                         if (res.ok) {
                             order = await res.json();
                         }
@@ -97,7 +97,7 @@ const KitchenTicketManager = () => {
                 const hasTables = order && order.tables && order.tables.length > 0;
                 if (!order || !hasTables) {
                     try {
-                        const res = await fetch(`http://localhost:4000/api/orders/${orderId}`);
+                const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/orders/${orderId}`);
                         if (res.ok) {
                             order = await res.json();
                         }
@@ -384,7 +384,7 @@ const KitchenTicketManager = () => {
                                     const hasTables = order && order.tables && order.tables.length > 0;
                                     if (!order || !hasDetails || !hasTables) {
                                         try {
-                                            const res = await fetch(`http://localhost:4000/api/orders/${orderId}`);
+            const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/orders/${orderId}`);
                                             if (res.ok) {
                                                 order = await res.json();
                                             }

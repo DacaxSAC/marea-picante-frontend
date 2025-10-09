@@ -46,7 +46,7 @@ import {
     Delete,
 } from '@mui/icons-material';
 
-const API_URL = 'http://localhost:4000/api/orders';
+const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api/orders`;
 
 const OrderManager = () => {
     const [orders, setOrders] = useState([]);
