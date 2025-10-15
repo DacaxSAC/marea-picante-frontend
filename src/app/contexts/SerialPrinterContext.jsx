@@ -89,7 +89,8 @@ export const SerialPrinterProvider = ({ children }) => {
         if (cancelled) break;
         if (isConnected[role]) continue;
         if (!autoConnectEnabled[role]) continue; // no auto-reconectar si fue desconectado manualmente
-        const selected = pickPort(granted, preferred[role]);
+        const otherRole = role === ROLES.orders ? ROLES.kitchen : ROLES.orders;
+        const selected = pickPort(granted, preferred[role], ports[otherRole]);
         if (selected) {
           try {
             const usedBaud = await openPort(role, selected);
@@ -106,7 +107,7 @@ export const SerialPrinterProvider = ({ children }) => {
     };
     tryAutoConnect();
     return () => { cancelled = true; };
-  }, [preferred, isConnected, autoConnectEnabled, openPort]);
+  }, [preferred, isConnected, autoConnectEnabled, openPort, ports]);
 
   const listGrantedPorts = useCallback(async () => {
     if (!('serial' in navigator)) return [];
@@ -119,20 +120,37 @@ export const SerialPrinterProvider = ({ children }) => {
     return granted;
   }, []);
 
-  const pickPort = (granted, pref) => {
+  const pickPort = (granted, pref, avoidPort = null) => {
     if (!granted || granted.length === 0) return null;
     const { usbVendorId, usbProductId, fallbackIndex } = pref || {};
-    if (usbVendorId && usbProductId) {
-      for (let i = 0; i < granted.length; i++) {
-        const info = granted[i].getInfo?.() || {};
-        if (info.usbVendorId === usbVendorId && info.usbProductId === usbProductId) {
-          return granted[i];
-        }
+
+    // 1) Priorizar índice de fallback si está disponible y no es el puerto a evitar
+    if (typeof fallbackIndex === 'number') {
+      const candidate = granted[fallbackIndex];
+      if (candidate && (!avoidPort || candidate !== avoidPort)) {
+        return candidate;
       }
     }
-    if (typeof fallbackIndex === 'number' && granted[fallbackIndex]) {
-      return granted[fallbackIndex];
+
+    // 2) Buscar por VID/PID pero evitando el puerto ya en uso
+    if (usbVendorId && usbProductId) {
+      const matches = granted.filter((p) => {
+        const info = p.getInfo?.() || {};
+        return info.usbVendorId === usbVendorId && info.usbProductId === usbProductId;
+      });
+      // Preferir el que no esté abierto y no sea el puerto a evitar
+      const firstAvailable = matches.find((p) => !p.opened && (!avoidPort || p !== avoidPort));
+      if (firstAvailable) return firstAvailable;
+      // Si no hay uno libre, tomar cualquiera que no sea el puerto a evitar
+      const firstMatch = matches.find((p) => !avoidPort || p !== avoidPort);
+      if (firstMatch) return firstMatch;
     }
+
+    // 3) Como último recurso, escoger el primer puerto no abierto y no evitado
+    const firstFree = granted.find((p) => !p.opened && (!avoidPort || p !== avoidPort));
+    if (firstFree) return firstFree;
+
+    // 4) Si no hay alternativa, devolver el primero disponible
     return granted[0];
   };
 
@@ -187,7 +205,8 @@ export const SerialPrinterProvider = ({ children }) => {
       }
 
       const granted = await listGrantedPorts();
-      let selected = pickPort(granted, preferred[role]);
+      const otherRole = role === ROLES.orders ? ROLES.kitchen : ROLES.orders;
+      let selected = pickPort(granted, preferred[role], ports[otherRole]);
       if (!selected) {
         console.log(`[Serial] (${role}) No hay puertos autorizados, solicitando selección`);
         selected = await navigator.serial.requestPort();
