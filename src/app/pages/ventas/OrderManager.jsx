@@ -45,6 +45,7 @@ import {
     Add,
     Delete,
 } from '@mui/icons-material';
+import { useSerialPrinter } from '../../contexts/SerialPrinterContext';
 
 const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api/orders`;
 
@@ -66,6 +67,15 @@ const OrderManager = () => {
     const [isPaymentLoading, setIsPaymentLoading] = useState(false);
     const [isCancelLoading, setIsCancelLoading] = useState(false);
     const [isTicketLoading, setIsTicketLoading] = useState(false);
+
+    // Serial (BT SPP / COM) printer context
+    const {
+        isSerialConnected,
+        isSerialConnecting,
+        connectToSerial,
+        printText: printTextSerial,
+        disconnectSerial,
+    } = useSerialPrinter();
 
     const fetchOrders = useCallback(async (filterStartDate = null, filterEndDate = null) => {
         try {
@@ -257,12 +267,6 @@ const OrderManager = () => {
                 return;
             }
 
-            // Verificar si hay impresora Bluetooth disponible
-            if (!navigator.bluetooth) {
-                showSnackbar('Bluetooth no está disponible en este navegador', 'error');
-                return;
-            }
-
             // Formatear la orden para el ticket térmico
             const ticketOrder = {
                 orderId: order.orderId,
@@ -279,9 +283,31 @@ const OrderManager = () => {
 
             // Generar ticket térmico ESC/POS
             const ticketData = generateThermalTicket(ticketOrder);
-            
-            // Enviar a impresora Bluetooth
-            await printToBluetoothPrinter(ticketData);
+
+            // Intentar impresión vía Serial (BT SPP / COM)
+            let printed = false;
+            if ('serial' in navigator) {
+                try {
+                    console.log('[Orders] Intentando impresión Serial (BT SPP / COM)');
+                    await connectToSerial();
+                    await printTextSerial(ticketData);
+                    console.log('[Orders] Ticket impreso vía Serial');
+                    printed = true;
+                } catch (serialErr) {
+                    console.warn('[Orders] Falló impresión Serial, se intentará Bluetooth:', serialErr?.message || serialErr);
+                }
+            } else {
+                console.warn('[Orders] Web Serial no disponible. Se intentará Bluetooth');
+            }
+
+            // Fallback a Bluetooth GATT
+            if (!printed) {
+                if (!navigator.bluetooth) {
+                    throw new Error('Bluetooth no está disponible en este navegador');
+                }
+                await printToBluetoothPrinter(ticketData);
+                console.log('[Orders] Ticket impreso vía Bluetooth');
+            }
             
             showSnackbar(`Ticket impreso exitosamente - Método de pago: ${getPaymentMethodText(paymentMethod)}`, 'success');
         } catch (error) {
@@ -610,6 +636,41 @@ const OrderManager = () => {
                         Gestión de Órdenes
                     </Typography>
                     <Box display="flex" alignItems="center" gap={2}>
+                        {/* Estado de conexión Serial (BT SPP / COM) */}
+                        <Box display="flex" alignItems="center">
+                            <Box
+                                sx={{
+                                    width: 12,
+                                    height: 12,
+                                    borderRadius: '50%',
+                                    backgroundColor: isSerialConnected ? '#4caf50' : '#f44336',
+                                    mr: 1
+                                }}
+                            />
+                            <Typography variant="body2" color="text.secondary">
+                                {isSerialConnected ? 'Serial (BT SPP) Conectada' : 'Serial (BT SPP) Desconectada'}
+                            </Typography>
+                        </Box>
+                        <Button
+                            onClick={connectToSerial}
+                            variant="outlined"
+                            size="small"
+                            disabled={isSerialConnecting}
+                            sx={{ borderRadius: '8px' }}
+                        >
+                            {isSerialConnecting ? 'Conectando...' : (isSerialConnected ? 'Reconectar Serial' : 'Conectar Serial')}
+                        </Button>
+                        {isSerialConnected && (
+                            <Button
+                                onClick={disconnectSerial}
+                                variant="outlined"
+                                size="small"
+                                sx={{ borderRadius: '8px' }}
+                            >
+                                Desconectar Serial
+                            </Button>
+                        )}
+
                         <Box display="flex" alignItems="center">
                             <Box
                                 sx={{
