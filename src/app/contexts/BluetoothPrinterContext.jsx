@@ -81,11 +81,9 @@ export const BluetoothPrinterProvider = ({ children }) => {
 
     // Buscar el primer servicio disponible de la lista
     let service = null;
-    let chosenServiceUUID = null;
     for (const uuid of BT_SERVICE_UUIDS) {
       try {
         service = await active.gatt.getPrimaryService(uuid);
-        chosenServiceUUID = uuid;
         console.log('Servicio Bluetooth obtenido:', uuid);
         break;
       } catch (err) {
@@ -98,11 +96,9 @@ export const BluetoothPrinterProvider = ({ children }) => {
 
     // Buscar la primera característica de escritura disponible
     let characteristic = null;
-    let chosenCharUUID = null;
     for (const cuuid of BT_CHARACTERISTIC_UUIDS) {
       try {
         characteristic = await service.getCharacteristic(cuuid);
-        chosenCharUUID = cuuid;
         console.log('Característica de escritura obtenida:', cuuid);
         break;
       } catch (err) {
