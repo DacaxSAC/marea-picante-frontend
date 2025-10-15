@@ -60,10 +60,26 @@ export const SerialPrinterProvider = ({ children }) => {
   // Abrir puerto con fallback de múltiples baud rates, priorizando el guardado por rol
   const openPort = useCallback(async (role, selected) => {
     const preferredBaud = preferred?.[role]?.baudRate;
-    const baseCandidates = [9600, 19200, 38400, 57600, 115200];
-    const candidates = preferredBaud
-      ? [preferredBaud, ...baseCandidates.filter((b) => b !== preferredBaud)]
-      : baseCandidates;
+    const otherRole = role === ROLES.orders ? ROLES.kitchen : ROLES.orders;
+    const info = selected.getInfo?.() || {};
+    const otherPref = preferred?.[otherRole] || {};
+    const sameDeviceType = otherPref && info && (otherPref.usbVendorId === info.usbVendorId) && (otherPref.usbProductId === info.usbProductId);
+    const otherKnownBaud = sameDeviceType ? otherPref.baudRate : undefined;
+
+    // Ampliamos candidatos con tasas adicionales usadas por algunas impresoras
+    const baseCandidates = [9600, 19200, 38400, 57600, 115200, 4800, 230400, 250000];
+    const ordered = [];
+    if (typeof preferredBaud === 'number') ordered.push(preferredBaud);
+    if (typeof otherKnownBaud === 'number' && otherKnownBaud !== preferredBaud) ordered.push(otherKnownBaud);
+    ordered.push(...baseCandidates);
+    // deduplicar conservando orden
+    const seen = new Set();
+    const candidates = ordered.filter((b) => {
+      if (seen.has(b)) return false;
+      seen.add(b);
+      return true;
+    });
+    console.log(`[Serial] (${role}) Intentando bauds:`, candidates);
 
     let lastError = null;
     for (const baud of candidates) {
