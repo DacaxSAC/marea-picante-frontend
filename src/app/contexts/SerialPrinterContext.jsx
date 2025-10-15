@@ -2,10 +2,35 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 
 const SerialPrinterContext = createContext(null);
 
+const ROLES = { orders: 'orders', kitchen: 'kitchen' };
+const STORAGE_KEYS = {
+  [ROLES.orders]: 'serial.preferred.orders',
+  [ROLES.kitchen]: 'serial.preferred.kitchen',
+};
+
+const readPreferred = (role) => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS[role]);
+    return raw ? JSON.parse(raw) : {};
+  } catch (_) {
+    return {};
+  }
+};
+
+const writePreferred = (role, pref) => {
+  try {
+    localStorage.setItem(STORAGE_KEYS[role], JSON.stringify(pref || {}));
+  } catch (_) {}
+};
+
 export const SerialPrinterProvider = ({ children }) => {
-  const [port, setPort] = useState(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [ports, setPorts] = useState({ orders: null, kitchen: null });
+  const [isConnected, setIsConnected] = useState({ orders: false, kitchen: false });
+  const [isConnecting, setIsConnecting] = useState({ orders: false, kitchen: false });
+  const [preferred, setPreferred] = useState({
+    orders: readPreferred(ROLES.orders),
+    kitchen: readPreferred(ROLES.kitchen),
+  });
 
   useEffect(() => {
     if (!('serial' in navigator)) {
@@ -17,8 +42,9 @@ export const SerialPrinterProvider = ({ children }) => {
     };
     const onDisconnect = (event) => {
       console.warn('[Serial] Dispositivo desconectado:', event);
-      setIsConnected(false);
-      setPort(null);
+      // Al desconectar, marcar estados en falso si afecta a algún rol
+      setIsConnected((prev) => ({ orders: false, kitchen: false }));
+      setPorts((prev) => ({ orders: null, kitchen: null }));
     };
     navigator.serial.addEventListener('connect', onConnect);
     navigator.serial.addEventListener('disconnect', onDisconnect);
@@ -28,62 +54,150 @@ export const SerialPrinterProvider = ({ children }) => {
     };
   }, []);
 
-  const connectToSerial = useCallback(async () => {
+  // Auto-conexión: si hay preferencias guardadas y puertos autorizados disponibles,
+  // intentar abrir el puerto preferido para cada rol al cargar.
+  useEffect(() => {
+    let cancelled = false;
+    const tryAutoConnect = async () => {
+      if (!('serial' in navigator)) return;
+      const granted = await navigator.serial.getPorts();
+      for (const role of [ROLES.orders, ROLES.kitchen]) {
+        if (cancelled) break;
+        if (isConnected[role]) continue;
+        const selected = pickPort(granted, preferred[role]);
+        if (selected) {
+          try {
+            await openPort(selected);
+            if (cancelled) break;
+            setPorts((prev) => ({ ...prev, [role]: selected }));
+            setIsConnected((prev) => ({ ...prev, [role]: true }));
+            const info = selected.getInfo?.() || {};
+            console.log(`[Serial] (${role}) Auto-conectado. Info:`, info);
+          } catch (err) {
+            console.warn(`[Serial] (${role}) Auto-conexión fallida:`, err?.message || err);
+          }
+        }
+      }
+    };
+    tryAutoConnect();
+    return () => { cancelled = true; };
+  }, [preferred]);
+
+  const listGrantedPorts = useCallback(async () => {
+    if (!('serial' in navigator)) return [];
+    const granted = await navigator.serial.getPorts();
+    console.log('[Serial] Puertos autorizados:', granted.length);
+    granted.forEach((p, idx) => {
+      const info = p.getInfo?.() || {};
+      console.log(`[Serial] Granted #${idx}:`, info);
+    });
+    return granted;
+  }, []);
+
+  const pickPort = (granted, pref) => {
+    if (!granted || granted.length === 0) return null;
+    const { usbVendorId, usbProductId, fallbackIndex } = pref || {};
+    if (usbVendorId && usbProductId) {
+      for (let i = 0; i < granted.length; i++) {
+        const info = granted[i].getInfo?.() || {};
+        if (info.usbVendorId === usbVendorId && info.usbProductId === usbProductId) {
+          return granted[i];
+        }
+      }
+    }
+    if (typeof fallbackIndex === 'number' && granted[fallbackIndex]) {
+      return granted[fallbackIndex];
+    }
+    return granted[0];
+  };
+
+  const openPort = async (selected) => {
+    // Intentar abrir con baudRate común en impresoras RS232/USB-Serial
     try {
-      console.log('[Serial] Iniciando conexión...');
-      setIsConnecting(true);
+      console.log('[Serial] Abriendo puerto a 9600 baud');
+      await selected.open({ baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
+      console.log('[Serial] Puerto abierto a 9600 baud');
+    } catch (err) {
+      // Fallback a 115200 si 9600 falla
+      console.warn('[Serial] Falló abrir a 9600:', err?.message || err);
+      console.log('[Serial] Probando abrir a 115200 baud');
+      await selected.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
+      console.log('[Serial] Puerto abierto a 115200 baud');
+    }
+  };
+
+  const selectSerialPort = useCallback(async (role) => {
+    if (!('serial' in navigator)) throw new Error('Web Serial no está disponible en este navegador');
+    console.log(`[Serial] (${role}) Solicitando selección de puerto...`);
+    const selected = await navigator.serial.requestPort();
+    const granted = await navigator.serial.getPorts();
+    const idx = granted.findIndex((p) => p === selected);
+    const info = selected.getInfo?.() || {};
+    console.log(`[Serial] (${role}) Puerto seleccionado. Info:`, info, 'index:', idx);
+
+    // Abrir el puerto recién seleccionado
+    await openPort(selected);
+    console.log(`[Serial] (${role}) Puerto abierto.`);
+
+    // Guardar preferencia
+    const newPref = {
+      usbVendorId: info.usbVendorId || null,
+      usbProductId: info.usbProductId || null,
+      fallbackIndex: idx >= 0 ? idx : 0,
+    };
+    setPreferred((prev) => {
+      const updated = { ...prev, [role]: newPref };
+      writePreferred(role, newPref);
+      return updated;
+    });
+
+    // Actualizar estado del rol
+    setPorts((prev) => ({ ...prev, [role]: selected }));
+    setIsConnected((prev) => ({ ...prev, [role]: true }));
+    return selected;
+  }, []);
+
+  const connectSerial = useCallback(async (role) => {
+    try {
+      console.log(`[Serial] (${role}) Iniciando conexión...`);
+      setIsConnecting((prev) => ({ ...prev, [role]: true }));
       if (!('serial' in navigator)) {
         throw new Error('Web Serial no está disponible en este navegador');
       }
 
-      if (port && port.writable) {
-        console.log('[Serial] Reutilizando puerto ya abierto');
-        setIsConnected(true);
-        return port;
+      const existing = ports[role];
+      if (existing && existing.writable) {
+        console.log(`[Serial] (${role}) Reutilizando puerto ya abierto`);
+        setIsConnected((prev) => ({ ...prev, [role]: true }));
+        return existing;
       }
 
-      // Reutilizar puertos previamente autorizados (p. ej., COM5), si existen
-      const granted = await navigator.serial.getPorts();
-      console.log('[Serial] Puertos previamente autorizados:', granted.length);
-      granted.forEach((p, idx) => {
-        const info = p.getInfo?.() || {};
-        console.log(`[Serial] Puerta #${idx}:`, info);
-      });
-      const selected = (granted && granted.length > 0)
-        ? (console.log('[Serial] Usando puerto previamente autorizado'), granted[0])
-        : (console.log('[Serial] Solicitando selección de puerto'), await navigator.serial.requestPort());
-
-      // Intentar abrir con baudRate común en impresoras RS232/USB-Serial
-      try {
-        console.log('[Serial] Abriendo puerto a 9600 baud');
-        await selected.open({ baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
-        console.log('[Serial] Puerto abierto a 9600 baud');
-      } catch (err) {
-        // Fallback a 115200 si 9600 falla
-        console.warn('[Serial] Falló abrir a 9600:', err?.message || err);
-        console.log('[Serial] Probando abrir a 115200 baud');
-        await selected.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
-        console.log('[Serial] Puerto abierto a 115200 baud');
+      const granted = await listGrantedPorts();
+      let selected = pickPort(granted, preferred[role]);
+      if (!selected) {
+        console.log(`[Serial] (${role}) No hay puertos autorizados, solicitando selección`);
+        selected = await navigator.serial.requestPort();
       }
 
-      setPort(selected);
-      setIsConnected(true);
+      await openPort(selected);
+      setPorts((prev) => ({ ...prev, [role]: selected }));
+      setIsConnected((prev) => ({ ...prev, [role]: true }));
       const info = selected.getInfo?.() || {};
-      console.log('[Serial] Conectado. Info:', info, 'opened:', selected.opened, 'readable:', !!selected.readable, 'writable:', !!selected.writable);
+      console.log(`[Serial] (${role}) Conectado. Info:`, info, 'opened:', selected.opened, 'readable:', !!selected.readable, 'writable:', !!selected.writable);
       return selected;
     } finally {
-      setIsConnecting(false);
+      setIsConnecting((prev) => ({ ...prev, [role]: false }));
     }
-  }, [port]);
+  }, [ports, preferred, listGrantedPorts]);
 
-  const printText = useCallback(async (text) => {
-    console.log('[Serial] Preparando impresión. Longitud de datos:', text?.length ?? 0);
+  const printTextFor = useCallback(async (role, text) => {
+    console.log(`[Serial] (${role}) Preparando impresión. Longitud de datos:`, text?.length ?? 0);
     if (!('serial' in navigator)) {
       throw new Error('Web Serial no está disponible en este navegador');
     }
-    const active = port && port.writable ? port : await connectToSerial();
+    const active = ports[role] && ports[role].writable ? ports[role] : await connectSerial(role);
     const writer = active.writable.getWriter();
-    console.log('[Serial] Writer adquirido. Comenzando envío...');
+    console.log(`[Serial] (${role}) Writer adquirido. Comenzando envío...`);
     const encoder = new TextEncoder();
     const data = encoder.encode(text);
 
@@ -94,34 +208,54 @@ export const SerialPrinterProvider = ({ children }) => {
         const chunk = data.slice(i, i + CHUNK);
         await writer.write(chunk);
         sent += chunk.length;
-        console.log(`[Serial] Enviado chunk ${i}-${Math.min(i + CHUNK, data.length)} (${chunk.length} bytes). Total enviados: ${sent}`);
+        console.log(`[Serial] (${role}) Enviado chunk ${i}-${Math.min(i + CHUNK, data.length)} (${chunk.length} bytes). Total enviados: ${sent}`);
         await new Promise((res) => setTimeout(res, 10));
       }
-      console.log('[Serial] Impresión completada. Bytes totales enviados:', sent);
+      console.log(`[Serial] (${role}) Impresión completada. Bytes totales enviados:`, sent);
     } finally {
       writer.releaseLock();
-      console.log('[Serial] Writer liberado.');
+      console.log(`[Serial] (${role}) Writer liberado.`);
     }
-  }, [port, connectToSerial]);
+  }, [ports, connectSerial]);
 
-  const disconnect = useCallback(async () => {
+  const disconnectRole = useCallback(async (role) => {
     try {
-      if (port) {
-        console.log('[Serial] Cerrando puerto...');
-        await port.close();
-        console.log('[Serial] Puerto cerrado.');
+      const p = ports[role];
+      if (p) {
+        console.log(`[Serial] (${role}) Cerrando puerto...`);
+        await p.close();
+        console.log(`[Serial] (${role}) Puerto cerrado.`);
       }
     } catch (_) {}
-    setIsConnected(false);
-    setPort(null);
-  }, [port]);
+    setIsConnected((prev) => ({ ...prev, [role]: false }));
+    setPorts((prev) => ({ ...prev, [role]: null }));
+  }, [ports]);
+
+  // Compatibilidad: funciones sin rol (por defecto cocina)
+  const connectToSerial = useCallback(() => connectSerial(ROLES.kitchen), [connectSerial]);
+  const printText = useCallback((text) => printTextFor(ROLES.kitchen, text), [printTextFor]);
+  const disconnectSerial = useCallback(() => disconnectRole(ROLES.kitchen), [disconnectRole]);
 
   const value = {
-    isSerialConnected: isConnected,
-    isSerialConnecting: isConnecting,
+    // Estados por rol
+    isSerialConnectedOrders: isConnected.orders,
+    isSerialConnectingOrders: isConnecting.orders,
+    isSerialConnectedKitchen: isConnected.kitchen,
+    isSerialConnectingKitchen: isConnecting.kitchen,
+    // Preferencias
+    preferred,
+    selectSerialPort,
+    // API por rol
+    connectSerial,
+    printTextFor,
+    disconnectRole,
+    listGrantedPorts,
+    // Compat (Kitchen por defecto)
+    isSerialConnected: isConnected.kitchen,
+    isSerialConnecting: isConnecting.kitchen,
     connectToSerial,
     printText,
-    disconnectSerial: disconnect,
+    disconnectSerial,
   };
 
   return (

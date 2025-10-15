@@ -15,6 +15,7 @@ import OrderManager from "./pages/ventas/OrderManager";
 import OpeningManager from "./pages/ventas/OpeningManager";
 import MovementManager from "./pages/ventas/MovementManager";
 import KitchenTicketManager from "./components/KitchenTicketManager";
+import PrinterSettingsPage from "./pages/config/PrinterSettingsPage";
 
 // SESSION PAGES
 const NotFound = Loadable(lazy(() => import("./views/sessions/NotFound")));
@@ -50,6 +51,7 @@ const routes = [
       { path: "/ventas/apertura-cierre", element: <OpeningManager />, auth: authRoles.admin },
       { path: "/ventas/movimientos", element: <MovementManager />, auth: authRoles.admin },
       { path: "/cocina/tickets", element: <KitchenTicketManager />, auth: authRoles.admin }, 
+      { path: "/config/impresoras", element: <PrinterSettingsPage />, auth: authRoles.admin },
     ]
   },
 

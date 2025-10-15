@@ -25,6 +25,11 @@ export const navigations = [
       { name: "Tickets de Cocina", iconText: "TC", path: "/cocina/tickets" },
     ]
   },
+  {
+    name: "Impresoras",
+    icon: "print",
+    path: "/config/impresoras"
+  },
   // { label: "PAGES", type: "label" },
   // {
   //   name: "Session/Auth",

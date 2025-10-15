@@ -46,6 +46,7 @@ import {
     Delete,
 } from '@mui/icons-material';
 import { useSerialPrinter } from '../../contexts/SerialPrinterContext';
+import PrinterSettingsDialog from '../../components/PrinterSettingsDialog';
 
 const API_URL = `${process.env.REACT_APP_BACKEND_URL}/api/orders`;
 
@@ -67,14 +68,16 @@ const OrderManager = () => {
     const [isPaymentLoading, setIsPaymentLoading] = useState(false);
     const [isCancelLoading, setIsCancelLoading] = useState(false);
     const [isTicketLoading, setIsTicketLoading] = useState(false);
+    const [printerSettingsOpen, setPrinterSettingsOpen] = useState(false);
 
     // Serial (BT SPP / COM) printer context
     const {
-        isSerialConnected,
-        isSerialConnecting,
-        connectToSerial,
-        printText: printTextSerial,
-        disconnectSerial,
+        isSerialConnectedOrders,
+        isSerialConnectingOrders,
+        connectSerial,
+        printTextFor,
+        disconnectRole,
+        selectSerialPort,
     } = useSerialPrinter();
 
     const fetchOrders = useCallback(async (filterStartDate = null, filterEndDate = null) => {
@@ -289,8 +292,8 @@ const OrderManager = () => {
             if ('serial' in navigator) {
                 try {
                     console.log('[Orders] Intentando impresión Serial (BT SPP / COM)');
-                    await connectToSerial();
-                    await printTextSerial(ticketData);
+                    await connectSerial('orders');
+                    await printTextFor('orders', ticketData);
                     console.log('[Orders] Ticket impreso vía Serial');
                     printed = true;
                 } catch (serialErr) {
@@ -636,6 +639,14 @@ const OrderManager = () => {
                         Gestión de Órdenes
                     </Typography>
                     <Box display="flex" alignItems="center" gap={2}>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={() => setPrinterSettingsOpen(true)}
+                            sx={{ borderRadius: '8px' }}
+                        >
+                            Configurar Impresoras
+                        </Button>
                         {/* Estado de conexión Serial (BT SPP / COM) */}
                         <Box display="flex" alignItems="center">
                             <Box
@@ -643,31 +654,39 @@ const OrderManager = () => {
                                     width: 12,
                                     height: 12,
                                     borderRadius: '50%',
-                                    backgroundColor: isSerialConnected ? '#4caf50' : '#f44336',
+                                    backgroundColor: isSerialConnectedOrders ? '#4caf50' : '#f44336',
                                     mr: 1
                                 }}
                             />
                             <Typography variant="body2" color="text.secondary">
-                                {isSerialConnected ? 'Serial (BT SPP) Conectada' : 'Serial (BT SPP) Desconectada'}
+                                {isSerialConnectedOrders ? 'Serial Órdenes (BT SPP) Conectada' : 'Serial Órdenes (BT SPP) Desconectada'}
                             </Typography>
                         </Box>
                         <Button
-                            onClick={connectToSerial}
+                            onClick={() => connectSerial('orders')}
                             variant="outlined"
                             size="small"
-                            disabled={isSerialConnecting}
+                            disabled={isSerialConnectingOrders}
                             sx={{ borderRadius: '8px' }}
                         >
-                            {isSerialConnecting ? 'Conectando...' : (isSerialConnected ? 'Reconectar Serial' : 'Conectar Serial')}
+                            {isSerialConnectingOrders ? 'Conectando...' : (isSerialConnectedOrders ? 'Reconectar Serial' : 'Conectar Serial')}
                         </Button>
-                        {isSerialConnected && (
+                        <Button
+                            onClick={() => selectSerialPort('orders')}
+                            variant="outlined"
+                            size="small"
+                            sx={{ borderRadius: '8px' }}
+                        >
+                            Elegir Puerto Órdenes
+                        </Button>
+                        {isSerialConnectedOrders && (
                             <Button
-                                onClick={disconnectSerial}
+                                onClick={() => disconnectRole('orders')}
                                 variant="outlined"
                                 size="small"
                                 sx={{ borderRadius: '8px' }}
                             >
-                                Desconectar Serial
+                                Desconectar Serial Órdenes
                             </Button>
                         )}
 
@@ -756,6 +775,9 @@ const OrderManager = () => {
                         )}
                     </Box>
                 </Box>
+
+                {/* Diálogo de configuración de impresoras */}
+                <PrinterSettingsDialog open={printerSettingsOpen} onClose={() => setPrinterSettingsOpen(false)} />
 
                 <TableContainer sx={{ padding: 2 }}>
                     <Table>
