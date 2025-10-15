@@ -143,49 +143,97 @@ const AutoPrintDaemon = () => {
   }, []);
 
   useEffect(() => {
-            const socket = io(process.env.REACT_APP_BACKEND_URL, {
+    console.log('Inicializando AutoPrintDaemon WebSocket...');
+    console.log('URL Backend:', process.env.REACT_APP_BACKEND_URL);
+    console.log('Estado impresora - isConnected:', isConnectedRef.current);
+    console.log('Estado impresión automática:', autoPrintEnabledRef.current);
+    
+    const socket = io(process.env.REACT_APP_BACKEND_URL, {
       transports: ['websocket'],
       autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
     });
+    
     socketRef.current = socket;
+    
     socket.on('connect', () => {
-      // console.log('AutoPrintDaemon conectado a WS');
-      // Unirse a la sala del restaurante (ID 1 por defecto)
+      console.log('✅ AutoPrintDaemon conectado a WebSocket');
       socket.emit('join-restaurant', 1);
+      console.log('Unido a sala de restaurante ID: 1');
     });
+    
+    socket.on('connect_error', (error) => {
+      console.error('❌ Error de conexión WebSocket:', error.message);
+    });
+    
+    socket.on('disconnect', (reason) => {
+      console.warn('⚠️ WebSocket desconectado:', reason);
+    });
+    
     socket.on('new-order', async (data) => {
-      if (!autoPrintEnabledRef.current) return;
+      console.log('📥 Evento new-order recibido:', data);
+      
+      if (!autoPrintEnabledRef.current) {
+        console.log('❌ Impresión automática desactivada, ignorando evento');
+        return;
+      }
+      
       try {
+        console.log('Obteniendo datos completos de la orden...');
         const order = await ensureFullOrder(data);
+        console.log('Datos de orden completos:', order);
+        
         if (isConnectedRef.current) {
+          console.log('🖨️ Impresora Bluetooth conectada, generando ticket...');
           const ticket = generateKitchenTicket(order);
+          console.log('Enviando a imprimir...');
           await printTextRef.current(ticket);
+          console.log('✅ Ticket impreso correctamente');
         } else {
-          // Fallback a impresión del navegador si no hay BT conectada
+          console.log('⚠️ Impresora Bluetooth no conectada, usando fallback de navegador');
           printTicketBrowserAuto(order);
         }
       } catch (err) {
-        // Silently fail to avoid UI disruption
+        console.error('❌ Error al procesar impresión automática:', err);
       }
     });
+    
     // Escuchar items agregados a orden existente y generar ticket sólo de esos productos
     socket.on('order-items-added', async (data) => {
-      if (!autoPrintEnabledRef.current) return;
+      console.log('📥 Evento order-items-added recibido:', data);
+      
+      if (!autoPrintEnabledRef.current) {
+        console.log('❌ Impresión automática desactivada, ignorando evento');
+        return;
+      }
+      
       try {
+        console.log('Obteniendo datos completos de la orden...');
         const fullOrder = await ensureFullOrder(data);
         const addedItems = Array.isArray(data.addedItems) ? data.addedItems : [data.addedItems];
+        console.log('Items agregados:', addedItems);
+        
         const orderForTicket = { ...fullOrder, items: addedItems, orderDetails: addedItems };
+        
         if (isConnectedRef.current) {
+          console.log('🖨️ Impresora Bluetooth conectada, generando ticket...');
           const ticket = generateKitchenTicket(orderForTicket);
+          console.log('Enviando a imprimir...');
           await printTextRef.current(ticket);
+          console.log('✅ Ticket impreso correctamente');
         } else {
+          console.log('⚠️ Impresora Bluetooth no conectada, usando fallback de navegador');
           printTicketBrowserAuto(orderForTicket);
         }
       } catch (err) {
-        // fail silently
+        console.error('❌ Error al procesar impresión de items agregados:', err);
       }
     });
+    
     return () => {
+      console.log('Desconectando WebSocket...');
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
