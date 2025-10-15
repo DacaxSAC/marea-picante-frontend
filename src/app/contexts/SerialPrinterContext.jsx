@@ -231,7 +231,7 @@ export const SerialPrinterProvider = ({ children }) => {
     setAutoConnectEnabled((prev) => ({ ...prev, [role]: true }));
     writeAutoConnect(role, true);
     return selected;
-  }, [openPort]);
+  }, [openPort, ports]);
 
   const connectSerial = useCallback(async (role) => {
     try {
