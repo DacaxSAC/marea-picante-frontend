@@ -2,8 +2,18 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 
 const BluetoothPrinterContext = createContext(null);
 
-const BT_SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb';
-const BT_CHARACTERISTIC_UUID = '00002af1-0000-1000-8000-00805f9b34fb';
+// UUIDs comunes en impresoras BLE (varía por fabricante)
+const BT_SERVICE_UUIDS = [
+  '000018f0-0000-1000-8000-00805f9b34fb', // Algunos modelos usan 0x18F0
+  '0000fff0-0000-1000-8000-00805f9b34fb', // Muy común (FFF0)
+  '0000ffe0-0000-1000-8000-00805f9b34fb', // HM-10/compatibles (FFE0)
+];
+
+const BT_CHARACTERISTIC_UUIDS = [
+  '00002af1-0000-1000-8000-00805f9b34fb', // Emparejado con 0x18F0 en algunos modelos
+  '0000fff2-0000-1000-8000-00805f9b34fb', // Con FFF0 suelen usar FFF2 para escritura
+  '0000ffe1-0000-1000-8000-00805f9b34fb', // HM-10/compatibles (FFE1)
+];
 
 export const BluetoothPrinterProvider = ({ children }) => {
   const [device, setDevice] = useState(null);
@@ -30,10 +40,17 @@ export const BluetoothPrinterProvider = ({ children }) => {
           { namePrefix: 'BT' },
           { namePrefix: 'BlueTooth Printer' }
         ],
-        optionalServices: [BT_SERVICE_UUID]
+        optionalServices: BT_SERVICE_UUIDS
       });
 
       await selected.gatt.connect();
+      // Log de servicios disponibles para diagnóstico en Windows 11
+      try {
+        const services = await selected.gatt.getPrimaryServices();
+        console.log('Servicios BLE disponibles:', services.map(s => s.uuid));
+      } catch (err) {
+        console.warn('No se pudieron listar servicios BLE:', err?.message);
+      }
 
       selected.addEventListener('gattserverdisconnected', () => {
         setIsConnected(false);
@@ -52,8 +69,49 @@ export const BluetoothPrinterProvider = ({ children }) => {
 
   const printText = useCallback(async (text) => {
     const active = device && device.gatt.connected ? device : await connectToPrinter();
-    const service = await active.gatt.getPrimaryService(BT_SERVICE_UUID);
-    const characteristic = await service.getCharacteristic(BT_CHARACTERISTIC_UUID);
+
+    // Reintento simple si se desconectó justo antes de obtener servicios
+    if (!active.gatt.connected) {
+      try {
+        await active.gatt.connect();
+      } catch (err) {
+        console.warn('No se pudo reconectar antes de obtener servicio:', err?.message);
+      }
+    }
+
+    // Buscar el primer servicio disponible de la lista
+    let service = null;
+    let chosenServiceUUID = null;
+    for (const uuid of BT_SERVICE_UUIDS) {
+      try {
+        service = await active.gatt.getPrimaryService(uuid);
+        chosenServiceUUID = uuid;
+        console.log('Servicio Bluetooth obtenido:', uuid);
+        break;
+      } catch (err) {
+        // Intentar siguiente UUID
+      }
+    }
+    if (!service) {
+      throw new Error('No se pudo obtener el servicio BLE de la impresora');
+    }
+
+    // Buscar la primera característica de escritura disponible
+    let characteristic = null;
+    let chosenCharUUID = null;
+    for (const cuuid of BT_CHARACTERISTIC_UUIDS) {
+      try {
+        characteristic = await service.getCharacteristic(cuuid);
+        chosenCharUUID = cuuid;
+        console.log('Característica de escritura obtenida:', cuuid);
+        break;
+      } catch (err) {
+        // Probar siguiente
+      }
+    }
+    if (!characteristic) {
+      throw new Error('No se pudo obtener la característica de escritura BLE');
+    }
 
     const encoder = new TextEncoder();
     const data = encoder.encode(text);
