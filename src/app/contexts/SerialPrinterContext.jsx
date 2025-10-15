@@ -81,7 +81,7 @@ export const SerialPrinterProvider = ({ children }) => {
     };
     tryAutoConnect();
     return () => { cancelled = true; };
-  }, [preferred]);
+  }, [preferred, isConnected]);
 
   const listGrantedPorts = useCallback(async () => {
     if (!('serial' in navigator)) return [];
