@@ -8,6 +8,11 @@ const STORAGE_KEYS = {
   [ROLES.kitchen]: 'serial.preferred.kitchen',
 };
 
+const AUTO_KEYS = {
+  [ROLES.orders]: 'serial.autoconnect.orders',
+  [ROLES.kitchen]: 'serial.autoconnect.kitchen',
+};
+
 const readPreferred = (role) => {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS[role]);
@@ -23,11 +28,30 @@ const writePreferred = (role, pref) => {
   } catch (_) {}
 };
 
+const readAutoConnect = (role) => {
+  try {
+    const raw = localStorage.getItem(AUTO_KEYS[role]);
+    if (raw === null) return true; // por defecto habilitado
+    return raw === 'true';
+  } catch (_) {
+    return true;
+  }
+};
+
+const writeAutoConnect = (role, value) => {
+  try {
+    localStorage.setItem(AUTO_KEYS[role], value ? 'true' : 'false');
+  } catch (_) {}
+};
+
 export const SerialPrinterProvider = ({ children }) => {
   const [ports, setPorts] = useState({ orders: null, kitchen: null });
   const [isConnected, setIsConnected] = useState({ orders: false, kitchen: false });
   const [isConnecting, setIsConnecting] = useState({ orders: false, kitchen: false });
-  const [autoConnectEnabled, setAutoConnectEnabled] = useState({ orders: true, kitchen: true });
+  const [autoConnectEnabled, setAutoConnectEnabled] = useState({
+    orders: readAutoConnect(ROLES.orders),
+    kitchen: readAutoConnect(ROLES.kitchen),
+  });
   const [preferred, setPreferred] = useState({
     orders: readPreferred(ROLES.orders),
     kitchen: readPreferred(ROLES.kitchen),
@@ -66,9 +90,21 @@ export const SerialPrinterProvider = ({ children }) => {
     };
     const onDisconnect = (event) => {
       console.warn('[Serial] Dispositivo desconectado:', event);
-      // Al desconectar, marcar estados en falso si afecta a algún rol
-      setIsConnected((prev) => ({ orders: false, kitchen: false }));
-      setPorts((prev) => ({ orders: null, kitchen: null }));
+      const port = event?.port || event?.target || null;
+      setIsConnected((prev) => {
+        const next = { ...prev };
+        if (port && ports.orders === port) next.orders = false;
+        if (port && ports.kitchen === port) next.kitchen = false;
+        if (!port) next.orders = next.kitchen = false; // fallback
+        return next;
+      });
+      setPorts((prev) => {
+        const next = { ...prev };
+        if (port && prev.orders === port) next.orders = null;
+        if (port && prev.kitchen === port) next.kitchen = null;
+        if (!port) next.orders = next.kitchen = null; // fallback
+        return next;
+      });
     };
     navigator.serial.addEventListener('connect', onConnect);
     navigator.serial.addEventListener('disconnect', onDisconnect);
@@ -76,7 +112,7 @@ export const SerialPrinterProvider = ({ children }) => {
       navigator.serial.removeEventListener('connect', onConnect);
       navigator.serial.removeEventListener('disconnect', onDisconnect);
     };
-  }, []);
+  }, [ports]);
 
   // Auto-conexión: si hay preferencias guardadas y puertos autorizados disponibles,
   // intentar abrir el puerto preferido para cada rol al cargar.
@@ -150,8 +186,9 @@ export const SerialPrinterProvider = ({ children }) => {
     const firstFree = granted.find((p) => !p.opened && (!avoidPort || p !== avoidPort));
     if (firstFree) return firstFree;
 
-    // 4) Si no hay alternativa, devolver el primero disponible
-    return granted[0];
+    // 4) Si no hay alternativa, devolver el primero disponible que no sea el evitado
+    const any = granted.find((p) => !avoidPort || p !== avoidPort) || null;
+    return any;
   };
 
   
@@ -164,6 +201,12 @@ export const SerialPrinterProvider = ({ children }) => {
     const idx = granted.findIndex((p) => p === selected);
     const info = selected.getInfo?.() || {};
     console.log(`[Serial] (${role}) Puerto seleccionado. Info:`, info, 'index:', idx);
+
+    // Evitar seleccionar el mismo puerto que ya está asignado al otro rol
+    const otherRole = role === ROLES.orders ? ROLES.kitchen : ROLES.orders;
+    if (ports[otherRole] && selected === ports[otherRole]) {
+      throw new Error(`El puerto seleccionado ya está en uso por el rol '${otherRole}'. Seleccione el otro dispositivo.`);
+    }
 
     // Abrir el puerto con fallback de bauds y guardar el baudRate usado
     const usedBaud = await openPort(role, selected);
@@ -186,6 +229,7 @@ export const SerialPrinterProvider = ({ children }) => {
     setPorts((prev) => ({ ...prev, [role]: selected }));
     setIsConnected((prev) => ({ ...prev, [role]: true }));
     setAutoConnectEnabled((prev) => ({ ...prev, [role]: true }));
+    writeAutoConnect(role, true);
     return selected;
   }, [openPort]);
 
@@ -212,6 +256,17 @@ export const SerialPrinterProvider = ({ children }) => {
         selected = await navigator.serial.requestPort();
       }
 
+      // Evitar intentar abrir el mismo puerto que está usando el otro rol
+      if (ports[otherRole] && selected === ports[otherRole]) {
+        const alternative = granted.find((p) => p !== ports[otherRole] && !p.opened) || granted.find((p) => p !== ports[otherRole]) || null;
+        if (alternative) {
+          console.log(`[Serial] (${role}) Cambiando a puerto alternativo para evitar conflicto con '${otherRole}'.`);
+          selected = alternative;
+        } else {
+          throw new Error(`No se puede abrir: el puerto seleccionado está en uso por '${otherRole}' y no hay alternativa.`);
+        }
+      }
+
       const usedBaud = await openPort(role, selected);
       setPorts((prev) => ({ ...prev, [role]: selected }));
       setIsConnected((prev) => ({ ...prev, [role]: true }));
@@ -233,6 +288,7 @@ export const SerialPrinterProvider = ({ children }) => {
         return updated;
       });
       setAutoConnectEnabled((prev) => ({ ...prev, [role]: true }));
+      writeAutoConnect(role, true);
       return selected;
     } finally {
       setIsConnecting((prev) => ({ ...prev, [role]: false }));
@@ -279,6 +335,7 @@ export const SerialPrinterProvider = ({ children }) => {
     setIsConnected((prev) => ({ ...prev, [role]: false }));
     setPorts((prev) => ({ ...prev, [role]: null }));
     setAutoConnectEnabled((prev) => ({ ...prev, [role]: false }));
+    writeAutoConnect(role, false);
   }, [ports]);
 
   // Compatibilidad: funciones sin rol (por defecto cocina)
