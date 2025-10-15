@@ -27,6 +27,7 @@ export const SerialPrinterProvider = ({ children }) => {
   const [ports, setPorts] = useState({ orders: null, kitchen: null });
   const [isConnected, setIsConnected] = useState({ orders: false, kitchen: false });
   const [isConnecting, setIsConnecting] = useState({ orders: false, kitchen: false });
+  const [autoConnectEnabled, setAutoConnectEnabled] = useState({ orders: true, kitchen: true });
   const [preferred, setPreferred] = useState({
     orders: readPreferred(ROLES.orders),
     kitchen: readPreferred(ROLES.kitchen),
@@ -64,6 +65,7 @@ export const SerialPrinterProvider = ({ children }) => {
       for (const role of [ROLES.orders, ROLES.kitchen]) {
         if (cancelled) break;
         if (isConnected[role]) continue;
+        if (!autoConnectEnabled[role]) continue; // no auto-reconectar si fue desconectado manualmente
         const selected = pickPort(granted, preferred[role]);
         if (selected) {
           try {
@@ -81,7 +83,7 @@ export const SerialPrinterProvider = ({ children }) => {
     };
     tryAutoConnect();
     return () => { cancelled = true; };
-  }, [preferred, isConnected]);
+  }, [preferred, isConnected, autoConnectEnabled]);
 
   const listGrantedPorts = useCallback(async () => {
     if (!('serial' in navigator)) return [];
@@ -154,6 +156,7 @@ export const SerialPrinterProvider = ({ children }) => {
     // Actualizar estado del rol
     setPorts((prev) => ({ ...prev, [role]: selected }));
     setIsConnected((prev) => ({ ...prev, [role]: true }));
+    setAutoConnectEnabled((prev) => ({ ...prev, [role]: true }));
     return selected;
   }, []);
 
@@ -184,6 +187,7 @@ export const SerialPrinterProvider = ({ children }) => {
       setIsConnected((prev) => ({ ...prev, [role]: true }));
       const info = selected.getInfo?.() || {};
       console.log(`[Serial] (${role}) Conectado. Info:`, info, 'opened:', selected.opened, 'readable:', !!selected.readable, 'writable:', !!selected.writable);
+      setAutoConnectEnabled((prev) => ({ ...prev, [role]: true }));
       return selected;
     } finally {
       setIsConnecting((prev) => ({ ...prev, [role]: false }));
@@ -229,6 +233,7 @@ export const SerialPrinterProvider = ({ children }) => {
     } catch (_) {}
     setIsConnected((prev) => ({ ...prev, [role]: false }));
     setPorts((prev) => ({ ...prev, [role]: null }));
+    setAutoConnectEnabled((prev) => ({ ...prev, [role]: false }));
   }, [ports]);
 
   // Compatibilidad: funciones sin rol (por defecto cocina)
