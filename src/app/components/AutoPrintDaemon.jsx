@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { useBluetoothPrinter } from '../contexts/BluetoothPrinterContext';
+import { useSerialPrinter } from '../contexts/SerialPrinterContext';
 
 // Generador de ticket de cocina estilo mobile (ESC/POS, tamaños y negritas)
 const generateKitchenTicket = (order) => {
@@ -84,17 +85,22 @@ const generateKitchenTicket = (order) => {
 
 const AutoPrintDaemon = () => {
   const { isConnected, autoPrintEnabled, printText } = useBluetoothPrinter();
+  const { isSerialConnected, printText: printTextSerial } = useSerialPrinter();
   const socketRef = useRef(null);
   const isConnectedRef = useRef(isConnected);
+  const isSerialConnectedRef = useRef(isSerialConnected);
   const autoPrintEnabledRef = useRef(autoPrintEnabled);
   const printTextRef = useRef(printText);
+  const printTextSerialRef = useRef(printTextSerial);
 
   // Mantener refs sincronizadas para leer valores actuales dentro de los handlers
   useEffect(() => {
     isConnectedRef.current = isConnected;
+    isSerialConnectedRef.current = isSerialConnected;
     autoPrintEnabledRef.current = autoPrintEnabled;
     printTextRef.current = printText;
-  }, [isConnected, autoPrintEnabled, printText]);
+    printTextSerialRef.current = printTextSerial;
+  }, [isConnected, isSerialConnected, autoPrintEnabled, printText, printTextSerial]);
 
   const printTicketBrowserAuto = useCallback((order) => {
     const ticket = generateKitchenTicket(order);
@@ -185,14 +191,19 @@ const AutoPrintDaemon = () => {
         const order = await ensureFullOrder(data);
         console.log('Datos de orden completos:', order);
         
-        if (isConnectedRef.current) {
+        const ticket = generateKitchenTicket(order);
+        if (isSerialConnectedRef.current) {
+          console.log('🖨️ Impresora Serial conectada, generando ticket...');
+          console.log('Enviando a imprimir por Serial...');
+          await printTextSerialRef.current(ticket);
+          console.log('✅ Ticket impreso correctamente (Serial)');
+        } else if (isConnectedRef.current) {
           console.log('🖨️ Impresora Bluetooth conectada, generando ticket...');
-          const ticket = generateKitchenTicket(order);
-          console.log('Enviando a imprimir...');
+          console.log('Enviando a imprimir por Bluetooth...');
           await printTextRef.current(ticket);
-          console.log('✅ Ticket impreso correctamente');
+          console.log('✅ Ticket impreso correctamente (Bluetooth)');
         } else {
-          console.log('⚠️ Impresora Bluetooth no conectada, usando fallback de navegador');
+          console.log('⚠️ Ninguna impresora conectada, usando fallback de navegador');
           printTicketBrowserAuto(order);
         }
       } catch (err) {
@@ -216,15 +227,19 @@ const AutoPrintDaemon = () => {
         console.log('Items agregados:', addedItems);
         
         const orderForTicket = { ...fullOrder, items: addedItems, orderDetails: addedItems };
-        
-        if (isConnectedRef.current) {
+        const ticket = generateKitchenTicket(orderForTicket);
+        if (isSerialConnectedRef.current) {
+          console.log('🖨️ Impresora Serial conectada, generando ticket...');
+          console.log('Enviando a imprimir por Serial...');
+          await printTextSerialRef.current(ticket);
+          console.log('✅ Ticket impreso correctamente (Serial)');
+        } else if (isConnectedRef.current) {
           console.log('🖨️ Impresora Bluetooth conectada, generando ticket...');
-          const ticket = generateKitchenTicket(orderForTicket);
-          console.log('Enviando a imprimir...');
+          console.log('Enviando a imprimir por Bluetooth...');
           await printTextRef.current(ticket);
-          console.log('✅ Ticket impreso correctamente');
+          console.log('✅ Ticket impreso correctamente (Bluetooth)');
         } else {
-          console.log('⚠️ Impresora Bluetooth no conectada, usando fallback de navegador');
+          console.log('⚠️ Ninguna impresora conectada, usando fallback de navegador');
           printTicketBrowserAuto(orderForTicket);
         }
       } catch (err) {

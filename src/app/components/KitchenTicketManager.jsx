@@ -28,6 +28,7 @@ import {
 } from '@mui/icons-material';
 import { io } from 'socket.io-client';
 import { useBluetoothPrinter } from '../contexts/BluetoothPrinterContext';
+import { useSerialPrinter } from '../contexts/SerialPrinterContext';
 
 const KitchenTicketManager = () => {
     const socketRef = useRef(null);
@@ -36,6 +37,7 @@ const KitchenTicketManager = () => {
     const [isListening, setIsListening] = useState(true);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'info' });
     const { isConnected: isBluetoothConnected, isConnecting: isConnectingBT, deviceName, autoPrintEnabled, setAutoPrintEnabled, connectToPrinter, printText } = useBluetoothPrinter();
+    const { isSerialConnected, isSerialConnecting, connectToSerial, printText: printTextSerial } = useSerialPrinter();
 
     // Conectar al WebSocket
     useEffect(() => {
@@ -291,6 +293,19 @@ const KitchenTicketManager = () => {
         }
     };
 
+    const printTicketSerial = async (notification) => {
+        try {
+            const ticket = generateKitchenTicket(notification.order);
+            await printTextSerial(ticket);
+            setNotifications(prev => 
+                prev.map(n => n.id === notification.id ? { ...n, printed: true } : n)
+            );
+            setSnackbar({ open: true, message: `Ticket #${notification.order.orderId} impreso en Serial (COM)`, severity: 'success' });
+        } catch (error) {
+            setSnackbar({ open: true, message: 'No se pudo imprimir por Serial: ' + error.message, severity: 'error' });
+        }
+    };
+
     // Limpiar notificaciones
     const clearNotifications = () => {
         setNotifications([]);
@@ -354,6 +369,20 @@ const KitchenTicketManager = () => {
                                 disabled={isConnectingBT}
                             >
                                 {isConnectingBT ? 'Conectando...' : (isBluetoothConnected ? 'Cambiar impresora' : 'Conectar Impresora')}
+                            </Button>
+
+                            <Chip 
+                                icon={<Print />}
+                                label={isSerialConnected ? 'Serial (BT SPP) Conectada' : 'Serial (BT SPP) Desconectada'}
+                                color={isSerialConnected ? 'success' : 'default'}
+                                variant="outlined"
+                            />
+                            <Button
+                                variant="outlined"
+                                onClick={connectToSerial}
+                                disabled={isSerialConnecting}
+                            >
+                                {isSerialConnecting ? 'Conectando...' : (isSerialConnected ? 'Cambiar Puerto' : 'Conectar Serial')}
                             </Button>
 
                             <Button
@@ -471,7 +500,7 @@ const KitchenTicketManager = () => {
                                         <Button
                                             variant="contained"
                                             startIcon={<Print />}
-                                            onClick={() => (isBluetoothConnected ? printTicketBluetooth(notification) : printTicketBrowser(notification))}
+                                            onClick={() => (isSerialConnected ? printTicketSerial(notification) : (isBluetoothConnected ? printTicketBluetooth(notification) : printTicketBrowser(notification)))}
                                             disabled={notification.printed}
                                         >
                                             {notification.printed ? 'Impreso' : 'Imprimir'}

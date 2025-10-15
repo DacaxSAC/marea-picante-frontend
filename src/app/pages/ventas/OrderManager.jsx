@@ -326,22 +326,11 @@ const OrderManager = () => {
                     { namePrefix: 'BT' },
                     { namePrefix: 'BlueTooth Printer' }
                 ],
-                optionalServices: [
-                    '000018f0-0000-1000-8000-00805f9b34fb',
-                    '0000fff0-0000-1000-8000-00805f9b34fb',
-                    '0000ffe0-0000-1000-8000-00805f9b34fb'
-                ]
+                optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
             });
 
             // Conectar al dispositivo
             await device.gatt.connect();
-            // Listar servicios BLE para diagnóstico
-            try {
-              const services = await device.gatt.getPrimaryServices();
-              console.log('Servicios BLE disponibles:', services.map(s => s.uuid));
-            } catch (err) {
-              console.warn('No se pudieron listar servicios BLE:', err?.message);
-            }
             
             // Configurar listener para desconexión
             device.addEventListener('gattserverdisconnected', () => {
@@ -365,41 +354,8 @@ const OrderManager = () => {
             // Conectar o usar conexión existente
             const device = await connectToPrinter();
             
-            // Intentar múltiples servicios/características comunes
-            const serviceUUIDs = [
-              '000018f0-0000-1000-8000-00805f9b34fb',
-              '0000fff0-0000-1000-8000-00805f9b34fb',
-              '0000ffe0-0000-1000-8000-00805f9b34fb'
-            ];
-            const charUUIDs = [
-              '00002af1-0000-1000-8000-00805f9b34fb',
-              '0000fff2-0000-1000-8000-00805f9b34fb',
-              '0000ffe1-0000-1000-8000-00805f9b34fb'
-            ];
-
-            let service = null;
-            for (const su of serviceUUIDs) {
-              try {
-                service = await device.gatt.getPrimaryService(su);
-                console.log('Servicio obtenido:', su);
-                break;
-              } catch (err) {
-                // Continúa probando
-              }
-            }
-            if (!service) throw new Error('No se pudo obtener el servicio BLE de la impresora');
-
-            let characteristic = null;
-            for (const cu of charUUIDs) {
-              try {
-                characteristic = await service.getCharacteristic(cu);
-                console.log('Característica obtenida:', cu);
-                break;
-              } catch (err) {
-                // Continúa probando
-              }
-            }
-            if (!characteristic) throw new Error('No se pudo obtener la característica de escritura BLE');
+            const service = await device.gatt.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
+            const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
 
             // Enviar datos del ticket
             const encoder = new TextEncoder();

@@ -5,6 +5,7 @@ import { MatxTheme } from "./components";
 // ALL CONTEXTS
 import { AuthProvider } from "./contexts/JWTAuthContext";
 import { BluetoothPrinterProvider } from "./contexts/BluetoothPrinterContext";
+import { SerialPrinterProvider } from "./contexts/SerialPrinterContext";
 import AutoPrintDaemon from "./components/AutoPrintDaemon";
 import SettingsProvider from "./contexts/SettingsContext";
 // ROUTES
@@ -18,13 +19,15 @@ export default function App() {
   return (
     <SettingsProvider>
       <AuthProvider>
-        <BluetoothPrinterProvider>
-          <MatxTheme>
-            <CssBaseline />
-            <AutoPrintDaemon />
-            {content}
-          </MatxTheme>
-        </BluetoothPrinterProvider>
+        <SerialPrinterProvider>
+          <BluetoothPrinterProvider>
+            <MatxTheme>
+              <CssBaseline />
+              <AutoPrintDaemon />
+              {content}
+            </MatxTheme>
+          </BluetoothPrinterProvider>
+        </SerialPrinterProvider>
       </AuthProvider>
     </SettingsProvider>
   );
