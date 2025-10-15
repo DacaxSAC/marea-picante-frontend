@@ -33,6 +33,9 @@ export const SerialPrinterProvider = ({ children }) => {
     kitchen: readPreferred(ROLES.kitchen),
   });
 
+  // Abrir puerto con fallback de múltiples baud rates, priorizando el guardado por rol
+  
+
   useEffect(() => {
     if (!('serial' in navigator)) {
       console.warn('[Serial] Web Serial no soportado en este navegador/origen');
