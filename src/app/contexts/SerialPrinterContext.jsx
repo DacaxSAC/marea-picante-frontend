@@ -69,12 +69,12 @@ export const SerialPrinterProvider = ({ children }) => {
         const selected = pickPort(granted, preferred[role]);
         if (selected) {
           try {
-            await openPort(selected);
+            const usedBaud = await openPort(role, selected);
             if (cancelled) break;
             setPorts((prev) => ({ ...prev, [role]: selected }));
             setIsConnected((prev) => ({ ...prev, [role]: true }));
             const info = selected.getInfo?.() || {};
-            console.log(`[Serial] (${role}) Auto-conectado. Info:`, info);
+            console.log(`[Serial] (${role}) Auto-conectado. Info:`, info, 'baudRate:', usedBaud);
           } catch (err) {
             console.warn(`[Serial] (${role}) Auto-conexión fallida:`, err?.message || err);
           }
@@ -83,7 +83,7 @@ export const SerialPrinterProvider = ({ children }) => {
     };
     tryAutoConnect();
     return () => { cancelled = true; };
-  }, [preferred, isConnected, autoConnectEnabled]);
+  }, [preferred, isConnected, autoConnectEnabled, openPort]);
 
   const listGrantedPorts = useCallback(async () => {
     if (!('serial' in navigator)) return [];
@@ -113,20 +113,27 @@ export const SerialPrinterProvider = ({ children }) => {
     return granted[0];
   };
 
-  const openPort = async (selected) => {
-    // Intentar abrir con baudRate común en impresoras RS232/USB-Serial
-    try {
-      console.log('[Serial] Abriendo puerto a 9600 baud');
-      await selected.open({ baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
-      console.log('[Serial] Puerto abierto a 9600 baud');
-    } catch (err) {
-      // Fallback a 115200 si 9600 falla
-      console.warn('[Serial] Falló abrir a 9600:', err?.message || err);
-      console.log('[Serial] Probando abrir a 115200 baud');
-      await selected.open({ baudRate: 115200, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
-      console.log('[Serial] Puerto abierto a 115200 baud');
+  const openPort = useCallback(async (role, selected) => {
+    const preferredBaud = preferred?.[role]?.baudRate;
+    const baseCandidates = [9600, 19200, 38400, 57600, 115200];
+    const candidates = preferredBaud
+      ? [preferredBaud, ...baseCandidates.filter((b) => b !== preferredBaud)]
+      : baseCandidates;
+
+    let lastError = null;
+    for (const baud of candidates) {
+      try {
+        console.log(`[Serial] (${role}) Abriendo puerto a ${baud} baud`);
+        await selected.open({ baudRate: baud, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
+        console.log(`[Serial] (${role}) Puerto abierto a ${baud} baud`);
+        return baud;
+      } catch (err) {
+        lastError = err;
+        console.warn(`[Serial] (${role}) Falló abrir a ${baud}:`, err?.message || err);
+      }
     }
-  };
+    throw new Error(`No se pudo abrir el puerto con tasas comunes. Último error: ${lastError?.message || lastError}`);
+  }, [preferred]);
 
   const selectSerialPort = useCallback(async (role) => {
     if (!('serial' in navigator)) throw new Error('Web Serial no está disponible en este navegador');
@@ -137,8 +144,8 @@ export const SerialPrinterProvider = ({ children }) => {
     const info = selected.getInfo?.() || {};
     console.log(`[Serial] (${role}) Puerto seleccionado. Info:`, info, 'index:', idx);
 
-    // Abrir el puerto recién seleccionado
-    await openPort(selected);
+    // Abrir el puerto con fallback de bauds y guardar el baudRate usado
+    const usedBaud = await openPort(role, selected);
     console.log(`[Serial] (${role}) Puerto abierto.`);
 
     // Guardar preferencia
@@ -146,6 +153,7 @@ export const SerialPrinterProvider = ({ children }) => {
       usbVendorId: info.usbVendorId || null,
       usbProductId: info.usbProductId || null,
       fallbackIndex: idx >= 0 ? idx : 0,
+      baudRate: usedBaud,
     };
     setPreferred((prev) => {
       const updated = { ...prev, [role]: newPref };
@@ -158,7 +166,7 @@ export const SerialPrinterProvider = ({ children }) => {
     setIsConnected((prev) => ({ ...prev, [role]: true }));
     setAutoConnectEnabled((prev) => ({ ...prev, [role]: true }));
     return selected;
-  }, []);
+  }, [openPort]);
 
   const connectSerial = useCallback(async (role) => {
     try {
@@ -182,17 +190,32 @@ export const SerialPrinterProvider = ({ children }) => {
         selected = await navigator.serial.requestPort();
       }
 
-      await openPort(selected);
+      const usedBaud = await openPort(role, selected);
       setPorts((prev) => ({ ...prev, [role]: selected }));
       setIsConnected((prev) => ({ ...prev, [role]: true }));
       const info = selected.getInfo?.() || {};
-      console.log(`[Serial] (${role}) Conectado. Info:`, info, 'opened:', selected.opened, 'readable:', !!selected.readable, 'writable:', !!selected.writable);
+      console.log(`[Serial] (${role}) Conectado. Info:`, info, 'opened:', selected.opened, 'readable:', !!selected.readable, 'writable:', !!selected.writable, 'baudRate:', usedBaud);
+
+      // Guardar preferencia (incluye baudRate)
+      const idx = (await listGrantedPorts()).findIndex((p) => p === selected);
+      const prevPref = preferred[role] || {};
+      const newPref = {
+        usbVendorId: info.usbVendorId ?? prevPref.usbVendorId ?? null,
+        usbProductId: info.usbProductId ?? prevPref.usbProductId ?? null,
+        fallbackIndex: idx >= 0 ? idx : (typeof prevPref.fallbackIndex === 'number' ? prevPref.fallbackIndex : 0),
+        baudRate: usedBaud,
+      };
+      setPreferred((prev) => {
+        const updated = { ...prev, [role]: newPref };
+        writePreferred(role, newPref);
+        return updated;
+      });
       setAutoConnectEnabled((prev) => ({ ...prev, [role]: true }));
       return selected;
     } finally {
       setIsConnecting((prev) => ({ ...prev, [role]: false }));
     }
-  }, [ports, preferred, listGrantedPorts]);
+  }, [ports, preferred, listGrantedPorts, openPort]);
 
   const printTextFor = useCallback(async (role, text) => {
     console.log(`[Serial] (${role}) Preparando impresión. Longitud de datos:`, text?.length ?? 0);
