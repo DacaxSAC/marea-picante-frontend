@@ -34,7 +34,27 @@ export const SerialPrinterProvider = ({ children }) => {
   });
 
   // Abrir puerto con fallback de múltiples baud rates, priorizando el guardado por rol
-  
+  const openPort = useCallback(async (role, selected) => {
+    const preferredBaud = preferred?.[role]?.baudRate;
+    const baseCandidates = [9600, 19200, 38400, 57600, 115200];
+    const candidates = preferredBaud
+      ? [preferredBaud, ...baseCandidates.filter((b) => b !== preferredBaud)]
+      : baseCandidates;
+
+    let lastError = null;
+    for (const baud of candidates) {
+      try {
+        console.log(`[Serial] (${role}) Abriendo puerto a ${baud} baud`);
+        await selected.open({ baudRate: baud, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
+        console.log(`[Serial] (${role}) Puerto abierto a ${baud} baud`);
+        return baud;
+      } catch (err) {
+        lastError = err;
+        console.warn(`[Serial] (${role}) Falló abrir a ${baud}:`, err?.message || err);
+      }
+    }
+    throw new Error(`No se pudo abrir el puerto con tasas comunes. Último error: ${lastError?.message || lastError}`);
+  }, [preferred]);
 
   useEffect(() => {
     if (!('serial' in navigator)) {
@@ -116,27 +136,7 @@ export const SerialPrinterProvider = ({ children }) => {
     return granted[0];
   };
 
-  const openPort = useCallback(async (role, selected) => {
-    const preferredBaud = preferred?.[role]?.baudRate;
-    const baseCandidates = [9600, 19200, 38400, 57600, 115200];
-    const candidates = preferredBaud
-      ? [preferredBaud, ...baseCandidates.filter((b) => b !== preferredBaud)]
-      : baseCandidates;
-
-    let lastError = null;
-    for (const baud of candidates) {
-      try {
-        console.log(`[Serial] (${role}) Abriendo puerto a ${baud} baud`);
-        await selected.open({ baudRate: baud, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
-        console.log(`[Serial] (${role}) Puerto abierto a ${baud} baud`);
-        return baud;
-      } catch (err) {
-        lastError = err;
-        console.warn(`[Serial] (${role}) Falló abrir a ${baud}:`, err?.message || err);
-      }
-    }
-    throw new Error(`No se pudo abrir el puerto con tasas comunes. Último error: ${lastError?.message || lastError}`);
-  }, [preferred]);
+  
 
   const selectSerialPort = useCallback(async (role) => {
     if (!('serial' in navigator)) throw new Error('Web Serial no está disponible en este navegador');
